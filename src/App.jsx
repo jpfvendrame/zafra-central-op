@@ -1,5 +1,6 @@
 import { Component, useState, useMemo } from "react";
 import CRMPage from "./CRMpage";
+import Landing from "./Landing";
 import zafraLogo from "./zafra_logo_branca.png";
 
 /* Rede de segurança: se qualquer página (CRM, Reports, etc.) quebrar em
@@ -275,6 +276,7 @@ function PanelHeader({ icon, title, action, onAction }) {
 
 /* ---------------- Main component ---------------- */
 export default function ZafraOperationsCenter({ userName = "João", userEmail = "joao.costa@zafra.com" }) {
+  const [loggedIn, setLoggedIn] = useState(false);
   const [activeNav, setActiveNav] = useState("home");
   const [reports, setReports] = useState(INITIAL_REPORTS);
   const [showAllReports, setShowAllReports] = useState(false);
@@ -307,6 +309,13 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
 
   const totalDeals = PIPELINE.reduce((sum, s) => sum + s.value, 0);
   const criticalErrors = alerts.length;
+
+  // Depois de todos os hooks já declarados acima — não quebra a Regra dos
+  // Hooks. Enquanto não "loga" (ilustrativo por enquanto), mostra a Landing
+  // em vez do dashboard.
+  if (!loggedIn) {
+    return <Landing onLogin={() => setLoggedIn(true)} />;
+  }
 
   return (
     <div className="zoc">
