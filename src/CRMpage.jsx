@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { csvUrl, daysSince, parseSheetDate, postToSheet, useSheetTable } from "./sheets";
+import { csvUrl, daysSince, parseSheetDate, postToSheet, useSheetTable } from "./Sheets";
 
 /* ---------------------------------------------------------
    Zafra · CRM (Prospecting)
