@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import CRMPage from "./CRMpage";
+import CRMpage from "./CRMpage";
 import zafraLogo from "./zafra_logo_branca.png";
 
 /* ---------------------------------------------------------
