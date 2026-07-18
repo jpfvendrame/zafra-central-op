@@ -39,6 +39,10 @@ const STAGES = [
   { id: "closing", label: "Closing", dot: "#2e6fc9" },
   { id: "won", label: "Won", dot: "#2f7a52" },
 ];
+// Fallback pra quando o valor de "stage" na planilha não bate com nenhum
+// dos 5 acima (célula vazia, digitado errado, etc) — evita que a página
+// inteira quebre por causa de um dado sujo numa linha.
+const DEFAULT_STAGE = { id: "unknown", label: "Sem estágio", dot: "#c7c7c9" };
 
 const SOURCES = ["Indicação", "Instagram", "Site", "Evento", "Cold outreach"];
 
@@ -419,7 +423,7 @@ export default function CRMPage() {
               </thead>
               <tbody>
                 {sortedForTable.map((lead) => {
-                  const stage = STAGES.find((s) => s.id === lead.stage);
+                  const stage = STAGES.find((s) => s.id === lead.stage) || DEFAULT_STAGE;
                   const health = healthOf(lead.daysAgo);
                   return (
                     <tr key={lead.id} className={selectedRows.has(lead.id) ? "row-selected" : ""}>

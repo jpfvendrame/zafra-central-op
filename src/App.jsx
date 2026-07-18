@@ -1,6 +1,41 @@
-import { useState, useMemo } from "react";
-import CRMpage from "./CRMpage";
+import { Component, useState, useMemo } from "react";
+import CRMPage from "./CRMpage";
 import zafraLogo from "./zafra_logo_branca.png";
+
+/* Rede de segurança: se qualquer página (CRM, Reports, etc.) quebrar em
+   tempo de execução por causa de um dado inesperado, mostra uma mensagem
+   amigável em vez de deixar a tela inteira em branco/preta. */
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ maxWidth: 420, margin: "80px auto", textAlign: "center", fontFamily: "-apple-system, sans-serif" }}>
+          <h2 style={{ fontSize: 17, marginBottom: 8, color: "#131314" }}>Algo deu errado nesta página</h2>
+          <p style={{ fontSize: 13, color: "#75757a", marginBottom: 6, lineHeight: 1.5 }}>
+            {this.state.error.message || "Erro inesperado."}
+          </p>
+          <p style={{ fontSize: 12, color: "#a9a9ae", marginBottom: 18 }}>
+            Costuma acontecer quando algum dado na planilha está num formato inesperado.
+          </p>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{ background: "#131314", color: "#fff", border: "none", padding: "8px 16px", borderRadius: 7, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+          >
+            Tentar de novo
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 /* ---------------------------------------------------------
    Zafra · Operations Center
@@ -313,6 +348,7 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
       </aside>
 
       <main className="content">
+        <ErrorBoundary key={activeNav}>
         {activeNav === "crm" ? (
           <CRMPage />
         ) : activeNav !== "home" ? (
@@ -480,6 +516,7 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
             </section>
           </>
         )}
+        </ErrorBoundary>
       </main>
 
       <style>{`
