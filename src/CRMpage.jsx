@@ -26,18 +26,20 @@ const CONFIG = {
   SHEET_ID: "1Dsa4iFcHWfxvln2nSCoxS5vGpaLmgtPr4BErOdzG7O4",
   LEADS_GID: "0",
   ACTIVITIES_GID: "1029573554",
-  WEBAPP_URL: "https://script.google.com/macros/s/AKfycbzgofha5IIfuDh2lWATB80gUncv1GsIiXf5yIPwKAPv8YbN9BCaH7rhpr2nKz8Kj4Xx/exec",
+  TAGS_GID: "1719715174",
+  WEBAPP_URL: "https://script.google.com/macros/s/AKfycbxYIdI65nXKW8lZ-HoieceJg72fxqmo4q6F_ce-w62UGrx_YkZrK00_VshX9Fm_m1dF/exec",
 };
 const IS_CONFIGURED = !CONFIG.SHEET_ID.startsWith("COLE_") && !CONFIG.WEBAPP_URL.startsWith("COLE_");
 const LEADS_CSV_URL = csvUrl(CONFIG.SHEET_ID, CONFIG.LEADS_GID);
 const ACTIVITIES_CSV_URL = csvUrl(CONFIG.SHEET_ID, CONFIG.ACTIVITIES_GID);
+const TAGS_CSV_URL = csvUrl(CONFIG.SHEET_ID, CONFIG.TAGS_GID);
 
 const STAGES = [
-  { id: "leads", label: "Leads", dot: "#a9a9ae" },
-  { id: "contacted", label: "Contacted", dot: "#c8512e" },
-  { id: "proposal", label: "Proposal", dot: "#c99a2e" },
-  { id: "closing", label: "Closing", dot: "#2e6fc9" },
-  { id: "won", label: "Won", dot: "#2f7a52" },
+  { id: "leads", label: "Leads", dot: "#c7c7c9" },
+  { id: "contacted", label: "Contacted", dot: "#a3a3a6" },
+  { id: "proposal", label: "Proposal", dot: "#7a7a7d" },
+  { id: "closing", label: "Closing", dot: "#4d4d50" },
+  { id: "won", label: "Won", dot: "#131314" },
 ];
 // Fallback pra quando o valor de "stage" na planilha não bate com nenhum
 // dos 5 acima (célula vazia, digitado errado, etc) — evita que a página
@@ -47,23 +49,37 @@ const DEFAULT_STAGE = { id: "unknown", label: "Sem estágio", dot: "#c7c7c9" };
 const SOURCES = ["Indicação", "Instagram", "Site", "Evento", "Cold outreach"];
 
 const OWNERS = {
-  "João": "#c8512e",
-  "Ana": "#2e6fc9",
+  "João": "#131314",
+  "Ana": "#75757a",
 };
 
+// Paleta estilo ClickUp — cores prontas pra escolher ao criar uma tag nova.
+const TAG_PALETTE = [
+  "#e05252", "#e08a3c", "#d9b23c", "#5aa66b",
+  "#3c9ea8", "#4d7fd4", "#7c5cd4", "#c15cb0",
+  "#8a8a8d", "#6b5344",
+];
+
+const MOCK_TAGS = [
+  { id: "tag1", name: "Quente 🔥", color: "#e05252" },
+  { id: "tag2", name: "Alto ticket", color: "#5aa66b" },
+  { id: "tag3", name: "Indicação VIP", color: "#4d7fd4" },
+  { id: "tag4", name: "Precisa nutrir", color: "#d9b23c" },
+];
+
 const MOCK_LEADS = [
-  { id: "l1", name: "Pousada Vento Sul", contact: "Renata Alves", stage: "leads", value: 3200, source: "Indicação", daysAgo: 1, owner: "João", notes: [] },
-  { id: "l2", name: "Chile Aventura Tours", contact: "Ignacio Vera", stage: "leads", value: 4800, source: "Instagram", daysAgo: 1, owner: "João", notes: [] },
-  { id: "l3", name: "Explorer Club", contact: "Marcos Lima", stage: "leads", value: 2600, source: "Site", daysAgo: 2, owner: "João", notes: [] },
-  { id: "l4", name: "Trilha Norte Expedições", contact: "Bianca Souza", stage: "leads", value: 3900, source: "Cold outreach", daysAgo: 8, owner: "Ana", notes: [] },
-  { id: "l5", name: "Costa Azul Hospedagens", contact: "Rafael Dias", stage: "contacted", value: 5200, source: "Evento", daysAgo: 2, owner: "João", notes: [{ date: "16 jul", text: "Ligação inicial, demonstrou interesse." }] },
-  { id: "l6", name: "Eco Travel", contact: "Maria Fontes", stage: "contacted", value: 4100, source: "Indicação", daysAgo: 1, owner: "João", notes: [{ date: "17 jul", text: "Enviado deck de apresentação." }] },
-  { id: "l7", name: "Deserto Vivo Turismo", contact: "Pablo Rios", stage: "contacted", value: 3300, source: "Instagram", daysAgo: 9, owner: "Ana", notes: [] },
-  { id: "l8", name: "Rota das Cataratas", contact: "Juliana Prado", stage: "proposal", value: 6800, source: "Site", daysAgo: 3, owner: "João", notes: [{ date: "15 jul", text: "Proposta enviada, aguardando retorno." }] },
-  { id: "l9", name: "Bariloche Total", contact: "Sofía Méndez", stage: "proposal", value: 7400, source: "Evento", daysAgo: 6, owner: "Ana", notes: [] },
-  { id: "l10", name: "Hotel Costa Azul", contact: "Fernando Melo", stage: "closing", value: 9200, source: "Indicação", daysAgo: 4, owner: "João", notes: [{ date: "12 jul", text: "Negociando condições de pagamento." }] },
-  { id: "l11", name: "Grado Dez Turismo", contact: "Rocío Fuentes", stage: "closing", value: 8600, source: "Cold outreach", daysAgo: 10, owner: "João", notes: [] },
-  { id: "l12", name: "Zerando o Atacama", contact: "Tales Barreto", stage: "won", value: 11500, source: "Indicação", daysAgo: 12, owner: "Ana", notes: [{ date: "08 jul", text: "Contrato assinado 🎉" }] },
+  { id: "l1", name: "Pousada Vento Sul", contact: "Renata Alves", stage: "leads", value: 3200, source: "Indicação", daysAgo: 1, owner: "João", notes: [], tagIds: ["tag1"] },
+  { id: "l2", name: "Chile Aventura Tours", contact: "Ignacio Vera", stage: "leads", value: 4800, source: "Instagram", daysAgo: 1, owner: "João", notes: [], tagIds: [] },
+  { id: "l3", name: "Explorer Club", contact: "Marcos Lima", stage: "leads", value: 2600, source: "Site", daysAgo: 2, owner: "João", notes: [], tagIds: ["tag4"] },
+  { id: "l4", name: "Trilha Norte Expedições", contact: "Bianca Souza", stage: "leads", value: 3900, source: "Cold outreach", daysAgo: 8, owner: "Ana", notes: [], tagIds: [] },
+  { id: "l5", name: "Costa Azul Hospedagens", contact: "Rafael Dias", stage: "contacted", value: 5200, source: "Evento", daysAgo: 2, owner: "João", notes: [{ date: "16 jul", text: "Ligação inicial, demonstrou interesse." }], tagIds: ["tag2"] },
+  { id: "l6", name: "Eco Travel", contact: "Maria Fontes", stage: "contacted", value: 4100, source: "Indicação", daysAgo: 1, owner: "João", notes: [{ date: "17 jul", text: "Enviado deck de apresentação." }], tagIds: ["tag1", "tag3"] },
+  { id: "l7", name: "Deserto Vivo Turismo", contact: "Pablo Rios", stage: "contacted", value: 3300, source: "Instagram", daysAgo: 9, owner: "Ana", notes: [], tagIds: [] },
+  { id: "l8", name: "Rota das Cataratas", contact: "Juliana Prado", stage: "proposal", value: 6800, source: "Site", daysAgo: 3, owner: "João", notes: [{ date: "15 jul", text: "Proposta enviada, aguardando retorno." }], tagIds: ["tag2"] },
+  { id: "l9", name: "Bariloche Total", contact: "Sofía Méndez", stage: "proposal", value: 7400, source: "Evento", daysAgo: 6, owner: "Ana", notes: [], tagIds: [] },
+  { id: "l10", name: "Hotel Costa Azul", contact: "Fernando Melo", stage: "closing", value: 9200, source: "Indicação", daysAgo: 4, owner: "João", notes: [{ date: "12 jul", text: "Negociando condições de pagamento." }], tagIds: ["tag2", "tag3"] },
+  { id: "l11", name: "Grado Dez Turismo", contact: "Rocío Fuentes", stage: "closing", value: 8600, source: "Cold outreach", daysAgo: 10, owner: "João", notes: [], tagIds: [] },
+  { id: "l12", name: "Zerando o Atacama", contact: "Tales Barreto", stage: "won", value: 11500, source: "Indicação", daysAgo: 12, owner: "Ana", notes: [{ date: "08 jul", text: "Contrato assinado 🎉" }], tagIds: ["tag2"] },
 ];
 
 /** Linha crua do CSV (tudo string) → lead tipado que o resto da página usa. */
@@ -77,11 +93,16 @@ function mapLeadRow(row) {
     source: row.source,
     owner: row.owner,
     daysAgo: daysSince(parseSheetDate(row.last_contact_date)),
+    tagIds: (row.tags || "").split(",").map((t) => t.trim()).filter(Boolean),
   };
 }
 
 function mapActivityRow(row) {
   return { id: row.id, leadId: row.lead_id, date: row.date, text: row.text };
+}
+
+function mapTagRow(row) {
+  return { id: row.id, name: row.name, color: row.color || "#8a8a8d" };
 }
 
 const currency = (n) =>
@@ -92,9 +113,9 @@ function initials(name) {
 }
 
 function healthOf(daysAgo) {
-  if (daysAgo <= 2) return { level: "fresh", color: "#2f7a52", label: "Contato recente" };
-  if (daysAgo <= 6) return { level: "warn", color: "#c99a2e", label: `${daysAgo}d sem contato` };
-  return { level: "stale", color: "#b3402f", label: `${daysAgo}d parado` };
+  if (daysAgo <= 2) return { level: "fresh", color: "#a9a9ae", label: "Contato recente" };
+  if (daysAgo <= 6) return { level: "warn", color: "#6b6b6e", label: `${daysAgo}d sem contato` };
+  return { level: "stale", color: "#131314", label: `${daysAgo}d parado` };
 }
 
 function daysAgoLabel(daysAgo) {
@@ -106,11 +127,14 @@ function daysAgoLabel(daysAgo) {
 export default function CRMPage() {
   const leadsTable = useSheetTable(IS_CONFIGURED ? LEADS_CSV_URL : null);
   const activitiesTable = useSheetTable(IS_CONFIGURED ? ACTIVITIES_CSV_URL : null);
+  const tagsTable = useSheetTable(IS_CONFIGURED ? TAGS_CSV_URL : null);
 
   const [leads, setLeads] = useState(IS_CONFIGURED ? [] : MOCK_LEADS);
+  const [tags, setTags] = useState(IS_CONFIGURED ? [] : MOCK_TAGS);
   const [view, setView] = useState("kanban"); // "kanban" | "table"
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
+  const [tagFilter, setTagFilter] = useState(new Set()); // ids de tags ativas no filtro
   const [segment, setSegment] = useState("all"); // "all" | "mine" | "stale"
   const [dragOverStage, setDragOverStage] = useState(null);
   const [sort, setSort] = useState({ key: "value", dir: "desc" });
@@ -121,12 +145,21 @@ export default function CRMPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [noteDraft, setNoteDraft] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
+  const [showTagMaker, setShowTagMaker] = useState(false);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagColor, setNewTagColor] = useState(TAG_PALETTE[0]);
 
   // Sempre que o CSV atualiza (a cada 60s ou depois de um reload manual),
-  // substitui os leads locais pela versão autoritativa da planilha.
+  // substitui os leads/tags locais pela versão autoritativa da planilha.
   useEffect(() => {
     if (IS_CONFIGURED) setLeads(leadsTable.rows.map(mapLeadRow));
   }, [leadsTable.rows]);
+
+  useEffect(() => {
+    if (IS_CONFIGURED) setTags(tagsTable.rows.map(mapTagRow));
+  }, [tagsTable.rows]);
+
+  const tagsById = useMemo(() => Object.fromEntries(tags.map((t) => [t.id, t])), [tags]);
 
   const activitiesByLead = useMemo(() => {
     const map = {};
@@ -145,9 +178,10 @@ export default function CRMPage() {
       const matchesQuery = !q || l.name.toLowerCase().includes(q) || l.contact.toLowerCase().includes(q);
       const matchesStage = stageFilter === "all" || l.stage === stageFilter;
       const matchesSegment = segment === "all" || (segment === "mine" && l.owner === "João") || (segment === "stale" && l.daysAgo > 6);
-      return matchesQuery && matchesStage && matchesSegment;
+      const matchesTags = tagFilter.size === 0 || (l.tagIds || []).some((t) => tagFilter.has(t));
+      return matchesQuery && matchesStage && matchesSegment && matchesTags;
     });
-  }, [leads, query, stageFilter, segment]);
+  }, [leads, query, stageFilter, segment, tagFilter]);
 
   const sortedForTable = useMemo(() => {
     const arr = [...filtered];
@@ -173,12 +207,63 @@ export default function CRMPage() {
     ? (IS_CONFIGURED ? (activitiesByLead[selectedLead.id] || []) : (selectedLead.notes || []))
     : [];
 
-  function moveLead(id, stage) {
-    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, stage } : l)));
+  function updateLeadField(id, field, value) {
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
     if (!IS_CONFIGURED) return;
-    postToSheet(CONFIG.WEBAPP_URL, "updateLead", { id, fields: { stage } }).catch((e) => {
+    postToSheet(CONFIG.WEBAPP_URL, "updateLead", { id, fields: { [field]: value } }).catch((e) => {
       setErrorMsg(e.message);
       leadsTable.reload();
+    });
+  }
+
+  function moveLead(id, stage) {
+    updateLeadField(id, "stage", stage);
+  }
+
+  function toggleLeadTag(lead, tagId) {
+    const current = lead.tagIds || [];
+    const next = current.includes(tagId) ? current.filter((t) => t !== tagId) : [...current, tagId];
+    setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, tagIds: next } : l)));
+    if (!IS_CONFIGURED) return;
+    postToSheet(CONFIG.WEBAPP_URL, "updateLead", { id: lead.id, fields: { tags: next.join(",") } }).catch((e) => {
+      setErrorMsg(e.message);
+      leadsTable.reload();
+    });
+  }
+
+  function toggleTagFilter(tagId) {
+    setTagFilter((prev) => {
+      const next = new Set(prev);
+      next.has(tagId) ? next.delete(tagId) : next.add(tagId);
+      return next;
+    });
+  }
+
+  async function createTag(e) {
+    e.preventDefault();
+    if (!newTagName.trim()) return;
+    if (!IS_CONFIGURED) {
+      const id = "tag" + Math.random().toString(36).slice(2, 8);
+      setTags((prev) => [...prev, { id, name: newTagName.trim(), color: newTagColor }]);
+    } else {
+      try {
+        await postToSheet(CONFIG.WEBAPP_URL, "createTag", { tag: { name: newTagName.trim(), color: newTagColor } });
+        await tagsTable.reload();
+      } catch (err) {
+        setErrorMsg(err.message);
+      }
+    }
+    setNewTagName("");
+    setNewTagColor(TAG_PALETTE[0]);
+  }
+
+  function deleteTag(id) {
+    setTags((prev) => prev.filter((t) => t.id !== id));
+    setTagFilter((prev) => { const next = new Set(prev); next.delete(id); return next; });
+    if (!IS_CONFIGURED) return;
+    postToSheet(CONFIG.WEBAPP_URL, "deleteTag", { id }).catch((e) => {
+      setErrorMsg(e.message);
+      tagsTable.reload();
     });
   }
 
@@ -326,6 +411,25 @@ export default function CRMPage() {
         </div>
       </div>
 
+      <div className="tag-toolbar">
+        <div className="tag-chips">
+          {tags.map((t) => (
+            <button
+              key={t.id}
+              className={tagFilter.has(t.id) ? "tag-chip active" : "tag-chip"}
+              style={tagFilter.has(t.id) ? { background: t.color, borderColor: t.color, color: "#fff" } : { borderColor: t.color, color: t.color }}
+              onClick={() => toggleTagFilter(t.id)}
+            >
+              {t.name}
+            </button>
+          ))}
+          {tagFilter.size > 0 && (
+            <button className="tag-clear" onClick={() => setTagFilter(new Set())}>Limpar filtro de tags</button>
+          )}
+        </div>
+        <button className="ghost-btn tag-manage-btn" onClick={() => setShowTagMaker(true)}>+ Gerenciar tags</button>
+      </div>
+
       {view === "kanban" ? (
         <div className="board">
           {STAGES.filter((s) => stageFilter === "all" || s.id === stageFilter).map((stage) => {
@@ -367,6 +471,13 @@ export default function CRMPage() {
                           <strong>{lead.name}</strong>
                         </div>
                         <p className="lead-contact">{lead.contact}</p>
+                        {lead.tagIds && lead.tagIds.length > 0 && (
+                          <div className="lead-tags">
+                            {lead.tagIds.map((tid) => tagsById[tid] && (
+                              <span key={tid} className="lead-tag-chip" style={{ background: tagsById[tid].color }}>{tagsById[tid].name}</span>
+                            ))}
+                          </div>
+                        )}
                         <div className="lead-meta">
                           <span>{currency(lead.value)}</span>
                           <span className="tag">{lead.source}</span>
@@ -419,6 +530,7 @@ export default function CRMPage() {
                       {label} {sort.key === key ? (sort.dir === "asc" ? "↑" : "↓") : ""}
                     </th>
                   ))}
+                  <th className="th-tags">Tags</th>
                 </tr>
               </thead>
               <tbody>
@@ -446,11 +558,18 @@ export default function CRMPage() {
                       <td className="clickable" onClick={() => setSelectedId(lead.id)}>
                         <span className="owner-chip" style={{ color: OWNERS[lead.owner] }}>{lead.owner}</span>
                       </td>
+                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>
+                        <div className="table-tags">
+                          {(lead.tagIds || []).map((tid) => tagsById[tid] && (
+                            <span key={tid} className="lead-tag-chip" style={{ background: tagsById[tid].color }}>{tagsById[tid].name}</span>
+                          ))}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
                 {sortedForTable.length === 0 && (
-                  <tr><td colSpan={8} className="table-empty">Nenhum lead encontrado.</td></tr>
+                  <tr><td colSpan={9} className="table-empty">Nenhum lead encontrado.</td></tr>
                 )}
               </tbody>
             </table>
@@ -460,11 +579,19 @@ export default function CRMPage() {
 
       {selectedLead && (
         <div className="drawer-overlay" onClick={() => setSelectedId(null)}>
-          <div className="drawer" onClick={(e) => e.stopPropagation()}>
+          <div className="drawer" key={selectedLead.id} onClick={(e) => e.stopPropagation()}>
             <div className="drawer-head">
-              <div>
-                <h2>{selectedLead.name}</h2>
-                <p>{selectedLead.contact}</p>
+              <div className="drawer-head-text">
+                <input
+                  className="drawer-name-input"
+                  defaultValue={selectedLead.name}
+                  onBlur={(e) => e.target.value.trim() && e.target.value !== selectedLead.name && updateLeadField(selectedLead.id, "name", e.target.value.trim())}
+                />
+                <input
+                  className="drawer-contact-input"
+                  defaultValue={selectedLead.contact}
+                  onBlur={(e) => e.target.value.trim() && e.target.value !== selectedLead.contact && updateLeadField(selectedLead.id, "contact", e.target.value.trim())}
+                />
               </div>
               <div className="drawer-head-actions">
                 <button className="drawer-delete" onClick={() => setConfirmDeleteId(selectedLead.id)} title="Excluir lead">🗑</button>
@@ -481,15 +608,48 @@ export default function CRMPage() {
               </div>
               <div>
                 <label>Valor estimado</label>
-                <div className="drawer-static">{currency(selectedLead.value)}</div>
+                <input
+                  type="number"
+                  className="drawer-input"
+                  defaultValue={selectedLead.value}
+                  onBlur={(e) => {
+                    const n = Number(e.target.value) || 0;
+                    if (n !== selectedLead.value) updateLeadField(selectedLead.id, "value", n);
+                  }}
+                />
               </div>
               <div>
                 <label>Origem</label>
-                <div className="drawer-static">{selectedLead.source}</div>
+                <select value={selectedLead.source} onChange={(e) => updateLeadField(selectedLead.id, "source", e.target.value)}>
+                  {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
               </div>
               <div>
                 <label>Dono</label>
-                <div className="drawer-static owner-chip" style={{ color: OWNERS[selectedLead.owner] }}>{selectedLead.owner}</div>
+                <select value={selectedLead.owner} onChange={(e) => updateLeadField(selectedLead.id, "owner", e.target.value)}>
+                  {Object.keys(OWNERS).map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="drawer-tags-section">
+              <label>Tags</label>
+              <div className="drawer-tags">
+                {tags.length === 0 && <p className="timeline-empty">Nenhuma tag criada ainda.</p>}
+                {tags.map((t) => {
+                  const active = (selectedLead.tagIds || []).includes(t.id);
+                  return (
+                    <button
+                      key={t.id}
+                      className={active ? "lead-tag-chip toggle active" : "lead-tag-chip toggle"}
+                      style={active ? { background: t.color } : { background: "#fff", border: `1px solid ${t.color}`, color: t.color }}
+                      onClick={() => toggleLeadTag(selectedLead, t.id)}
+                    >
+                      {t.name}
+                    </button>
+                  );
+                })}
+                <button className="tag-manage-inline" onClick={() => setShowTagMaker(true)}>+ Nova tag</button>
               </div>
             </div>
 
@@ -543,10 +703,49 @@ export default function CRMPage() {
         </div>
       )}
 
+      {showTagMaker && (
+        <div className="confirm-overlay" onClick={() => setShowTagMaker(false)}>
+          <div className="tagmaker-card" onClick={(e) => e.stopPropagation()}>
+            <div className="tagmaker-head">
+              <h3>Gerenciar tags</h3>
+              <button className="drawer-close" onClick={() => setShowTagMaker(false)}>✕</button>
+            </div>
+            <p className="tagmaker-sub">Tags ficam salvas pra todo mundo que usa esse CRM ver e usar.</p>
+
+            <div className="tagmaker-list">
+              {tags.length === 0 && <p className="timeline-empty">Nenhuma tag criada ainda.</p>}
+              {tags.map((t) => (
+                <div key={t.id} className="tagmaker-row">
+                  <span className="lead-tag-chip" style={{ background: t.color }}>{t.name}</span>
+                  <button className="tagmaker-delete" onClick={() => deleteTag(t.id)} title="Excluir tag">🗑</button>
+                </div>
+              ))}
+            </div>
+
+            <form className="tagmaker-form" onSubmit={createTag}>
+              <label>Nova tag</label>
+              <input placeholder="Nome da tag" value={newTagName} onChange={(e) => setNewTagName(e.target.value)} />
+              <div className="tagmaker-swatches">
+                {TAG_PALETTE.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    className={newTagColor === c ? "swatch active" : "swatch"}
+                    style={{ background: c }}
+                    onClick={() => setNewTagColor(c)}
+                  />
+                ))}
+              </div>
+              <button className="primary-btn" type="submit">Criar tag</button>
+            </form>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .crm {
           --bg: #fafafa; --card: #ffffff; --ink: #131314; --ink-soft: #75757a; --ink-faint: #a9a9ae;
-          --line: #e7e7e9; --accent: #c8512e; --green: #2f7a52; --green-soft: #e2f0e6; --red: #b3402f; --sand: #f2f2f0;
+          --line: #e7e7e9; --accent: #2b2b2d; --green: #4a4a4d; --green-soft: #ececec; --red: #131314; --sand: #f2f2f0;
           color: var(--ink); font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px; position: relative;
         }
         .crm * { box-sizing: border-box; }
@@ -586,6 +785,19 @@ export default function CRMPage() {
         .crm-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
         .search { flex: 1; min-width: 220px; max-width: 320px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; font-size: 13px; background: var(--card); color: var(--ink); }
         .stage-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+
+        .tag-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+        .tag-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .tag-chip { background: #fff; border: 1.5px solid var(--line); font-size: 11.5px; font-weight: 600; padding: 5px 11px; border-radius: 20px; }
+        .tag-chip.active { border-width: 1.5px; }
+        .tag-clear { background: none; border: none; color: var(--ink-faint); font-size: 11.5px; text-decoration: underline; }
+        .tag-manage-btn { white-space: nowrap; }
+
+        .lead-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+        .lead-tag-chip { display: inline-flex; color: #fff; font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 20px; }
+        .lead-tag-chip.toggle { cursor: pointer; border: none; }
+        .table-tags { display: flex; flex-wrap: wrap; gap: 4px; max-width: 220px; }
+        .th-tags { cursor: default; }
         .chip { background: var(--card); border: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; padding: 6px 12px; border-radius: 20px; }
         .chip.active { background: var(--ink); border-color: var(--ink); color: #fff; }
 
@@ -626,7 +838,7 @@ export default function CRMPage() {
         th { text-align: left; padding: 11px 14px; background: var(--sand); font-size: 11px; color: var(--ink-soft); font-weight: 600; text-transform: uppercase; letter-spacing: .4px; cursor: pointer; user-select: none; }
         td { padding: 11px 14px; border-top: 1px solid var(--line); }
         td.clickable { cursor: pointer; }
-        tr.row-selected { background: #faf3ef; }
+        tr.row-selected { background: #f0f0f0; }
         .th-check { width: 34px; cursor: default; }
         .badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: var(--ink-soft); }
         .badge-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
@@ -642,10 +854,36 @@ export default function CRMPage() {
         .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
         .confirm-delete-btn { background: var(--red); color: #fff; border: none; padding: 8px 15px; border-radius: 7px; font-size: 13px; font-weight: 600; }
         .confirm-delete-btn:hover { background: #97382a; }
+
+        .tagmaker-card { background: var(--card); border-radius: 12px; padding: 22px; max-width: 380px; width: 100%; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+        .tagmaker-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px; }
+        .tagmaker-head h3 { font-size: 16px; margin: 0; color: var(--ink); }
+        .tagmaker-sub { font-size: 12px; color: var(--ink-faint); margin: 0 0 16px; }
+        .tagmaker-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; max-height: 220px; overflow-y: auto; }
+        .tagmaker-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .tagmaker-delete { background: var(--sand); border: none; width: 24px; height: 24px; border-radius: 6px; font-size: 11px; color: var(--ink-faint); flex-shrink: 0; }
+        .tagmaker-delete:hover { background: var(--red-soft, #f0d8d8); color: var(--red); }
+        .tagmaker-form { border-top: 1px solid var(--line); padding-top: 16px; display: flex; flex-direction: column; gap: 10px; }
+        .tagmaker-form label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; color: var(--ink-faint); font-weight: 600; }
+        .tagmaker-form input { border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px; font-size: 13px; font-family: inherit; }
+        .tagmaker-swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+        .swatch { width: 24px; height: 24px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; }
+        .swatch.active { border-color: var(--ink); box-shadow: 0 0 0 2px #fff inset; }
         .drawer { width: 380px; max-width: 92vw; height: 100%; background: var(--card); border-left: 1px solid var(--line); padding: 22px; overflow-y: auto; }
         .drawer-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
-        .drawer-head h2 { font-size: 17px; margin: 0 0 2px; color: var(--ink); }
-        .drawer-head p { margin: 0; font-size: 12.5px; color: var(--ink-soft); }
+        .drawer-head-text { flex: 1; min-width: 0; }
+        .drawer-name-input {
+          display: block; width: 100%; font-size: 17px; font-weight: 700; color: var(--ink);
+          border: 1px solid transparent; border-radius: 6px; padding: 3px 5px; margin: 0 0 2px -5px;
+          background: none; font-family: inherit;
+        }
+        .drawer-name-input:hover, .drawer-name-input:focus { border-color: var(--line); background: var(--sand); outline: none; }
+        .drawer-contact-input {
+          display: block; width: 100%; font-size: 12.5px; color: var(--ink-soft);
+          border: 1px solid transparent; border-radius: 6px; padding: 2px 5px; margin-left: -5px;
+          background: none; font-family: inherit;
+        }
+        .drawer-contact-input:hover, .drawer-contact-input:focus { border-color: var(--line); background: var(--sand); outline: none; }
         .drawer-head-actions { display: flex; gap: 6px; flex-shrink: 0; }
         .drawer-close { background: var(--sand); border: none; width: 26px; height: 26px; border-radius: 7px; font-size: 12px; color: var(--ink-soft); flex-shrink: 0; }
         .drawer-close:hover { background: var(--line); }
@@ -655,6 +893,13 @@ export default function CRMPage() {
         .drawer-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
         .drawer-fields label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; color: var(--ink-faint); margin-bottom: 4px; font-weight: 600; }
         .drawer-fields select { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; font-size: 12.5px; background: #fff; }
+        .drawer-input { width: 100%; border: 1px solid var(--line); border-radius: 7px; padding: 7px 8px; font-size: 12.5px; background: #fff; font-family: inherit; color: var(--ink); }
+
+        .drawer-tags-section { margin-bottom: 16px; }
+        .drawer-tags-section label { display: block; font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; color: var(--ink-faint); margin-bottom: 7px; font-weight: 600; }
+        .drawer-tags { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+        .tag-manage-inline { background: none; border: 1px dashed var(--line); color: var(--ink-faint); font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; }
+        .tag-manage-inline:hover { color: var(--ink); border-color: var(--ink-faint); }
         .drawer-static { font-size: 13px; padding: 2px 0; }
 
         .drawer-health { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ink-soft); background: var(--sand); border-radius: 7px; padding: 8px 10px; margin-bottom: 16px; }

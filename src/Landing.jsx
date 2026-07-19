@@ -123,29 +123,29 @@ export default function Landing({ onLogin }) {
         .stage-title {
           position: absolute; text-align: center; will-change: transform, opacity;
           font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
-          pointer-events: none;
+          pointer-events: none; max-width: 90vw;
         }
-        .stage-logo { width: 150px; height: auto; filter: brightness(0); margin: 0 auto; display: block; }
-        .stage-title h1 { font-size: 44px; font-weight: 700; letter-spacing: -1px; color: #131314; margin: 8px 0 6px; }
-        .stage-title p { font-size: 14px; color: #75757a; margin: 0; }
+        .stage-logo { width: 230px; height: auto; filter: brightness(0); margin: 0 auto; display: block; }
+        .stage-title h1 { font-size: 68px; font-weight: 700; letter-spacing: -1.5px; color: #131314; margin: 14px 0 10px; }
+        .stage-title p { font-size: 19px; color: #75757a; margin: 0; }
 
         .stage-login {
-          position: absolute; width: 320px; max-width: 88vw; text-align: center;
-          will-change: transform, opacity; display: flex; flex-direction: column; gap: 10px;
+          position: absolute; width: 440px; max-width: 88vw; text-align: center;
+          will-change: transform, opacity; display: flex; flex-direction: column; gap: 14px;
           font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
         }
-        .login-eyebrow { font-size: 11.5px; letter-spacing: 2.5px; color: #0e0e0e; font-weight: 700; }
-        .stage-login h2 { font-size: 20px; font-weight: 700; color: #131314; margin: 4px 0 14px; }
+        .login-eyebrow { font-size: 14px; letter-spacing: 3px; color: #75757a; font-weight: 700; }
+        .stage-login h2 { font-size: 32px; font-weight: 700; color: #131314; margin: 6px 0 18px; }
         .stage-login input {
-          border: 1px solid #e7e7e9; border-radius: 8px; padding: 11px 13px;
-          font-size: 13.5px; background: #fff; color: #131314; text-align: left;
+          border: 1px solid #e7e7e9; border-radius: 10px; padding: 15px 17px;
+          font-size: 17px; background: #fff; color: #131314; text-align: left;
         }
         .login-btn {
-          background: #131314; color: #fff; border: none; padding: 11px; border-radius: 8px;
-          font-size: 13.5px; font-weight: 600; cursor: pointer; margin-top: 4px;
+          background: #131314; color: #fff; border: none; padding: 15px; border-radius: 10px;
+          font-size: 17px; font-weight: 600; cursor: pointer; margin-top: 6px;
         }
         .login-btn:hover { background: #2a2a2c; }
-        .login-hint { font-size: 11px; color: #a9a9ae; margin: 4px 0 0; }
+        .login-hint { font-size: 13px; color: #a9a9ae; margin: 6px 0 0; }
 
         .stage-scroll-hint {
           position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%);

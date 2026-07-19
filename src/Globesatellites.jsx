@@ -138,7 +138,7 @@ export default function GlobeSatellites({ markers = defaultMarkers, size = 420, 
         .gsat { position: relative; user-select: none; aspect-ratio: 1 / 1; }
         .gsat::before {
           content: ""; position: absolute; inset: -12%; border-radius: 50%;
-          background: radial-gradient(circle, rgba(200,81,46,0.10) 0%, rgba(200,81,46,0.03) 45%, transparent 70%);
+          background: radial-gradient(circle, rgba(19,19,20,0.08) 0%, rgba(19,19,20,0.03) 45%, transparent 70%);
           pointer-events: none;
         }
         .gsat-canvas { position: relative; width: 100%; height: 100%; cursor: grab; opacity: 0; transition: opacity 1.1s ease; touch-action: none; filter: drop-shadow(0 18px 40px rgba(19,19,20,0.18)); }

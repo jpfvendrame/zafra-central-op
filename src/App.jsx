@@ -1,4 +1,5 @@
-import { Component, useState, useMemo } from "react";
+import { Component, useEffect, useState, useMemo } from "react";
+import { motion, AnimatePresence } from "motion/react";
 import CRMPage from "./CRMpage";
 import Landing from "./Landing";
 import zafraLogo from "./zafra_logo_branca.png";
@@ -191,6 +192,9 @@ const SYSTEM_HEALTH = [
   { name: "Lead Capture", status: "operational" },
   { name: "WhatsApp Sender", status: "operational" },
   { name: "Analytics Engine", status: "operational" },
+  { name: "Database", status: "operational" },
+  { name: "File Storage", status: "operational" },
+  { name: "Notification Service", status: "operational" },
 ];
 
 const INITIAL_REPORTS = [
@@ -248,7 +252,7 @@ function nowLabel() {
 function StatCard({ icon, tone, value, label, delta }) {
   return (
     <div className="card stat-card">
-      <div className={`stat-icon${tone === "accent" ? " tone-accent" : ""}`}>{Icon[icon]({ width: 18, height: 18 })}</div>
+      <div className={`stat-icon${tone === "accent" ? " tone-accent" : ""}`}>{Icon[icon]({ width: 22, height: 22 })}</div>
       <div>
         <div className="stat-value">{value}</div>
         <div className="stat-label">{label}</div>
@@ -277,6 +281,18 @@ function PanelHeader({ icon, title, action, onAction }) {
 /* ---------------- Main component ---------------- */
 export default function ZafraOperationsCenter({ userName = "João", userEmail = "joao.costa@zafra.com" }) {
   const [loggedIn, setLoggedIn] = useState(false);
+
+  // Reseta o scroll pro topo só DEPOIS que a Landing terminou de sumir da
+  // tela (a animação de saída dura 0.45s) — se resetar antes, o scroll
+  // forçado mexe na posição que a própria Landing usa pra decidir o que
+  // mostrar, e ela "pisca" de volta pro estado de só-o-globo no meio da
+  // transição.
+  useEffect(() => {
+    if (!loggedIn) return;
+    const id = setTimeout(() => window.scrollTo({ top: 0, behavior: "instant" }), 480);
+    return () => clearTimeout(id);
+  }, [loggedIn]);
+
   const [activeNav, setActiveNav] = useState("home");
   const [reports, setReports] = useState(INITIAL_REPORTS);
   const [showAllReports, setShowAllReports] = useState(false);
@@ -308,17 +324,34 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
   }
 
   const totalDeals = PIPELINE.reduce((sum, s) => sum + s.value, 0);
+  const pipelinePct = Math.round(((totalDeals - PIPELINE[0].value) / totalDeals) * 100);
   const criticalErrors = alerts.length;
 
-  // Depois de todos os hooks já declarados acima — não quebra a Regra dos
-  // Hooks. Enquanto não "loga" (ilustrativo por enquanto), mostra a Landing
-  // em vez do dashboard.
-  if (!loggedIn) {
-    return <Landing onLogin={() => setLoggedIn(true)} />;
+  // Reseta o scroll pro topo ao logar — sem isso, a página do dashboard
+  // "herda" a posição de scroll de onde a Landing parou (lá embaixo, no
+  // formulário de login), e parece abrir já rolada pro final.
+  function handleLogin() {
+    setLoggedIn(true);
   }
 
   return (
-    <div className="zoc">
+    <>
+      <style>{`
+        html, body, #root {
+          width: 100%; min-height: 100vh; margin: 0; padding: 0;
+          max-width: none; display: block; text-align: left; color-scheme: light;
+          background: #fafafa; color: #131314;
+          scrollbar-width: none; /* Firefox */
+        }
+        html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; } /* Chrome/Safari/Edge */
+      `}</style>
+      <AnimatePresence mode="wait">
+      {!loggedIn ? (
+        <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.45, ease: "easeInOut" }}>
+          <Landing onLogin={handleLogin} />
+        </motion.div>
+      ) : (
+        <motion.div key="dashboard" className="zoc" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }}>
       <aside className="sidebar">
         <div className="brand">
           <img src={zafraLogo} alt="Zafra — marketing para turismo" className="brand-logo" />
@@ -337,22 +370,23 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
           ))}
         </nav>
 
-        <div className="user-box">
-          <button className="user-btn" onClick={() => setMenuOpen((v) => !v)}>
-            <span className="avatar">{userName.slice(0, 2).toUpperCase()}</span>
-            <span className="user-meta">
-              <strong>{userName} Costa</strong>
-              <small>{userEmail}</small>
-            </span>
-            <Icon.chevron width={13} height={13} className={`user-caret${menuOpen ? " open" : ""}`} />
-          </button>
-          {menuOpen && (
-            <div className="user-menu">
-              <button>Meu perfil</button>
-              <button>Preferências</button>
-              <button className="danger">Sair</button>
-            </div>
-          )}
+        <div className="status-widget">
+          <div className="status-head">
+            <span className="status-dot-live" />
+            <span>SYSTEM STATUS</span>
+          </div>
+          <div className="status-line">
+            <Icon.check width={15} height={15} className="ok-icon" />
+            <strong>All systems operational</strong>
+          </div>
+          <p className="status-sub">9 automations online</p>
+          <svg className="status-sparkline" viewBox="0 0 140 34" preserveAspectRatio="none">
+            <polyline
+              points="0,24 14,20 28,26 42,14 56,18 70,8 84,16 98,10 112,18 126,6 140,12"
+              fill="none" stroke="#4a4a4d" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+            />
+          </svg>
+          <p className="status-updated">Updated just now</p>
         </div>
       </aside>
 
@@ -385,7 +419,25 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                   <Icon.bell width={16} height={16} />
                   {criticalErrors > 0 && <span className="icon-dot" />}
                 </button>
-                <span className="date-chip">{todayLabel()}</span>
+                <div className="header-user">
+                  <button className="header-user-btn" onClick={() => setMenuOpen((v) => !v)}>
+                    <span className="avatar">{userName.slice(0, 2).toUpperCase()}</span>
+                    <span>{userName} Costa</span>
+                    <Icon.chevron width={13} height={13} className={`user-caret${menuOpen ? " open" : ""}`} />
+                  </button>
+                  {menuOpen && (
+                    <div className="user-menu">
+                      <button>Meu perfil</button>
+                      <button>Preferências</button>
+                      <button className="danger">Sair</button>
+                    </div>
+                  )}
+                </div>
+                <span className="date-chip">
+                  <Icon.doc width={13} height={13} />
+                  {todayLabel()}
+                  <Icon.chevron width={12} height={12} />
+                </span>
               </div>
             </header>
 
@@ -405,7 +457,10 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
             <section className="grid-3">
               <div className="card panel">
                 <PanelHeader icon="pulse" title="System Health" />
-                <p className="panel-sub">All systems are operational</p>
+                <div className="panel-row">
+                  <span>All systems are operational</span>
+                  <span className="pill">All good</span>
+                </div>
                 <ul className="health-list">
                   {SYSTEM_HEALTH.map((s) => (
                     <li key={s.name}>
@@ -415,6 +470,9 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                     </li>
                   ))}
                 </ul>
+                <button className="panel-view-all">
+                  View all systems <Icon.arrow width={13} height={13} />
+                </button>
               </div>
 
               <div className="card panel">
@@ -437,7 +495,9 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                     </li>
                   ))}
                 </ul>
-                <p className="panel-foot ok">All reports delivered successfully</p>
+                <button className="panel-view-all">
+                  View all reports <Icon.arrow width={13} height={13} />
+                </button>
               </div>
 
               <div className="card panel">
@@ -454,10 +514,14 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                 </div>
                 <div className="panel-row">
                   <span>Total deals in pipeline: {totalDeals}</span>
-                  <button className="link-btn" onClick={() => setActiveNav("crm")}>
-                    View CRM <Icon.arrow width={12} height={12} />
-                  </button>
+                  <span className="pipeline-pct">{pipelinePct}%</span>
                 </div>
+                <div className="progress-track">
+                  <div className="progress-fill" style={{ width: `${pipelinePct}%` }} />
+                </div>
+                <button className="link-btn pipeline-view-crm" onClick={() => setActiveNav("crm")}>
+                  View CRM <Icon.arrow width={12} height={12} />
+                </button>
               </div>
             </section>
 
@@ -481,9 +545,9 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                           <br />
                           Error: {a.error}
                         </p>
-                        <button className="outline-btn" onClick={() => resolveAlert(a)} disabled={rerunning === a.id}>
+                        <button className="rerun-btn" onClick={() => resolveAlert(a)} disabled={rerunning === a.id}>
                           <Icon.refresh width={13} height={13} className={rerunning === a.id ? "spin" : ""} />
-                          {rerunning === a.id ? "Re-running…" : "Re-run Automation"}
+                          {rerunning === a.id ? "Re-running…" : "Run Automation Again"}
                         </button>
                       </div>
                     </div>
@@ -516,7 +580,11 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                   {activity.slice(0, 6).map((a, i) => (
                     <li key={i}>
                       <span className="time">{a.time}</span>
-                      <span className={`dot ${a.tone === "ok" ? "ok" : "bad"}`} />
+                      {a.tone === "ok" ? (
+                        <span className="dot ok" />
+                      ) : (
+                        <Icon.alert width={13} height={13} className="activity-warn" />
+                      )}
                       {a.text}
                     </li>
                   ))}
@@ -552,12 +620,12 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
           --ink-soft: #75757a;
           --ink-faint: #a9a9ae;
           --line: #e7e7e9;
-          --accent: #c8512e;
-          --accent-soft: #f6e3db;
-          --green: #2f7a52;
-          --green-soft: #e2f0e6;
-          --red: #b3402f;
-          --red-soft: #f7e2dd;
+          --accent: #2b2b2d;
+          --accent-soft: #ececec;
+          --green: #4a4a4d;
+          --green-soft: #ececec;
+          --red: #131314;
+          --red-soft: #e4e4e5;
           --sand: #f2f2f0;
           font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
           color: var(--ink);
@@ -598,27 +666,37 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
         .nav-item.active { background: var(--ink); color: #fff; }
         .nav-item.active svg { color: #fff; }
 
-        .user-box { margin-top: auto; position: relative; border-top: 1px solid var(--line); padding-top: 12px; }
-        .user-btn { width: 100%; display: flex; align-items: center; gap: 9px; background: none; border: none; padding: 4px; border-radius: 8px; }
-        .user-btn:hover { background: var(--sand); }
         .avatar {
-          width: 28px; height: 28px; border-radius: 50%; background: var(--ink);
+          width: 26px; height: 26px; border-radius: 50%; background: var(--ink);
           color: #fff; display: flex; align-items: center; justify-content: center;
-          font-size: 11px; font-weight: 700; flex-shrink: 0;
+          font-size: 10.5px; font-weight: 700; flex-shrink: 0;
         }
-        .user-meta { display: flex; flex-direction: column; text-align: left; flex: 1; min-width: 0; }
-        .user-meta strong { font-size: 12.5px; font-weight: 600; }
-        .user-meta small { font-size: 11px; color: var(--ink-faint); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .header-user { position: relative; }
+        .header-user-btn {
+          display: flex; align-items: center; gap: 8px; background: var(--card);
+          border: 1px solid var(--line); border-radius: 20px; padding: 4px 12px 4px 4px;
+          font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap;
+        }
+        .header-user-btn:hover { background: var(--sand); }
         .user-caret { transition: transform .15s; color: var(--ink-faint); flex-shrink: 0; }
         .user-caret.open { transform: rotate(180deg); }
         .user-menu {
-          position: absolute; bottom: 54px; left: 4px; right: 4px;
+          position: absolute; top: 46px; right: 0; width: 170px;
           background: var(--card); border: 1px solid var(--line); border-radius: 9px;
-          box-shadow: 0 8px 24px rgba(0,0,0,.08); overflow: hidden;
+          box-shadow: 0 8px 24px rgba(0,0,0,.08); overflow: hidden; z-index: 10;
         }
         .user-menu button { display: block; width: 100%; text-align: left; padding: 9px 12px; background: none; border: none; font-size: 12.5px; color: var(--ink); }
         .user-menu button:hover { background: var(--sand); }
         .user-menu button.danger { color: var(--red); }
+
+        .status-widget { margin-top: auto; border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+        .status-head { display: flex; align-items: center; gap: 7px; font-size: 10.5px; letter-spacing: .4px; color: var(--ink-faint); font-weight: 700; margin-bottom: 10px; }
+        .status-dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+        .status-line { display: flex; align-items: center; gap: 6px; font-size: 12.5px; margin-bottom: 3px; }
+        .status-sub { font-size: 11.5px; color: var(--ink-soft); margin: 0 0 10px; }
+        .status-sparkline { width: 100%; height: 32px; display: block; margin-bottom: 8px; }
+        .status-updated { font-size: 10.5px; color: var(--ink-faint); margin: 0; }
 
         /* Content */
         .content { padding: 28px 36px 56px; }
@@ -635,16 +713,17 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
         .icon-btn { position: relative; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; }
         .icon-btn:hover { background: var(--sand); }
         .icon-dot { position: absolute; top: 6px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-        .date-chip { font-size: 12px; color: var(--ink-soft); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; white-space: nowrap; }
+        .date-chip { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; white-space: nowrap; }
+        .date-chip svg:last-child { color: var(--ink-faint); }
 
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
         .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
         .stat-card { padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
         .stat-icon {
-          width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line);
-          display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--ink-soft);
+          width: 52px; height: 52px; border-radius: 50%; background: var(--sand); border: none;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--ink);
         }
-        .stat-icon.tone-accent { border-color: var(--red); color: var(--red); }
+        .stat-icon.tone-accent { background: var(--red-soft); color: var(--red); }
         .stat-value { font-size: 22px; font-weight: 700; line-height: 1; letter-spacing: -0.3px; }
         .stat-label { font-size: 12px; color: var(--ink-soft); margin-top: 4px; line-height: 1.3; }
         .stat-delta { font-size: 11.5px; color: var(--green); margin-top: 6px; }
@@ -680,13 +759,26 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
         .pipeline-stage strong { font-size: 17px; }
         .pipeline-stage svg { color: var(--ink-faint); }
 
+        .pipeline-pct { font-weight: 700; color: var(--ink); }
+        .progress-track { height: 5px; background: var(--sand); border-radius: 20px; overflow: hidden; margin: 8px 0 12px; }
+        .progress-fill { height: 100%; background: var(--ink); border-radius: 20px; transition: width .3s ease; }
+        .pipeline-view-crm { margin: 0; }
+
+        .panel-view-all {
+          display: flex; align-items: center; justify-content: center; gap: 6px;
+          width: 100%; background: none; border: 1px solid var(--line); color: var(--ink);
+          font-size: 12.5px; font-weight: 600; padding: 9px; border-radius: 8px; margin-top: 12px;
+        }
+        .panel-view-all:hover { background: var(--sand); }
+        .activity-warn { color: var(--red); flex-shrink: 0; }
+
         .alert-box { display: flex; gap: 11px; background: var(--red-soft); border: 1px solid #ecc3ba; border-radius: 9px; padding: 13px; }
         .alert-icon { color: var(--red); flex-shrink: 0; margin-top: 2px; }
         .alert-box strong { font-size: 13px; color: var(--red); }
         .alert-box p { font-size: 12px; color: var(--ink-soft); margin: 5px 0 9px; line-height: 1.5; }
-        .outline-btn { display: inline-flex; align-items: center; gap: 6px; background: #fff; border: 1px solid var(--red); color: var(--red); font-size: 12px; font-weight: 600; padding: 6px 11px; border-radius: 7px; }
-        .outline-btn:hover { background: var(--red); color: #fff; }
-        .outline-btn:disabled { opacity: .65; cursor: default; }
+        .rerun-btn { display: flex; align-items: center; justify-content: center; gap: 7px; width: 100%; background: var(--ink); border: none; color: #fff; font-size: 12.5px; font-weight: 600; padding: 10px; border-radius: 8px; }
+        .rerun-btn:hover { background: #2a2a2c; }
+        .rerun-btn:disabled { opacity: .65; cursor: default; }
         .empty-ok { display: flex; align-items: center; gap: 8px; color: var(--green); font-size: 13px; }
         .spin { animation: spin 0.9s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -712,12 +804,16 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
           .zoc { grid-template-columns: 1fr; }
           .sidebar { flex-direction: row; flex-wrap: wrap; }
           .nav { flex-direction: row; flex-wrap: wrap; }
-          .user-box { display: none; }
+          .status-widget { display: none; }
+          .header-user-btn span:not(.avatar) { display: none; }
           .stats-grid { grid-template-columns: 1fr 1fr; }
           .content { padding: 20px 16px 36px; }
           .search-box input { width: 90px; }
         }
       `}</style>
-    </div>
+    </motion.div>
+      )}
+      </AnimatePresence>
+    </>
   );
 }
