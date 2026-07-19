@@ -2,6 +2,7 @@ import { Component, useEffect, useState, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import CRMPage from "./CRMpage";
 import Landing from "./Landing";
+import AIAgentsPage from "./AIAgentsPage";
 import zafraLogo from "./zafra_logo_branca.png";
 
 /* Rede de segurança: se qualquer página (CRM, Reports, etc.) quebrar em
@@ -170,19 +171,18 @@ const Icon = {
       <path d="M10 19.5a2 2 0 0 0 4 0" strokeLinecap="round" />
     </svg>
   ),
+  sparkle: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" {...p}>
+      <path d="M12 3.5c.5 3.2 1.3 5 2.6 6.3 1.3 1.3 3.1 2.1 6.3 2.6-3.2.5-5 1.3-6.3 2.6-1.3 1.3-2.1 3.1-2.6 6.3-.5-3.2-1.3-5-2.6-6.3-1.3-1.3-3.1-2.1-6.3-2.6 3.2-.5 5-1.3 6.3-2.6 1.3-1.3 2.1-3.1 2.6-6.3Z" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  ),
 };
 
 /* ---------------- Static config ---------------- */
 const NAV = [
   { id: "home", label: "Home", icon: "home" },
-  { id: "automations", label: "Automations", icon: "bolt" },
-  { id: "reports", label: "Reports", icon: "doc" },
   { id: "crm", label: "CRM", icon: "users" },
-  { id: "leads", label: "Leads", icon: "target" },
-  { id: "campaigns", label: "Campaigns", icon: "megaphone" },
-  { id: "integrations", label: "Integrations", icon: "puzzle" },
-  { id: "workflows", label: "Workflows", icon: "workflow" },
-  { id: "logs", label: "Logs", icon: "list" },
+  { id: "aiagents", label: "AI Agents", icon: "sparkle" },
   { id: "settings", label: "Settings", icon: "gear" },
 ];
 
@@ -247,6 +247,12 @@ function todayLabel() {
 function nowLabel() {
   return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
+function getGreeting() {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Bom dia";
+  if (hour >= 12 && hour < 18) return "Boa tarde";
+  return "Boa noite";
+}
 
 /* ---------------- Small building blocks ---------------- */
 function StatCard({ icon, tone, value, label, delta }) {
@@ -279,7 +285,8 @@ function PanelHeader({ icon, title, action, onAction }) {
 }
 
 /* ---------------- Main component ---------------- */
-export default function ZafraOperationsCenter({ userName = "João", userEmail = "joao.costa@zafra.com" }) {
+export default function ZafraOperationsCenter() {
+  const [user, setUser] = useState({ name: "João", email: "joao.costa@zafra.com" });
   const [loggedIn, setLoggedIn] = useState(false);
 
   // Reseta o scroll pro topo só DEPOIS que a Landing terminou de sumir da
@@ -330,7 +337,8 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
   // Reseta o scroll pro topo ao logar — sem isso, a página do dashboard
   // "herda" a posição de scroll de onde a Landing parou (lá embaixo, no
   // formulário de login), e parece abrir já rolada pro final.
-  function handleLogin() {
+  function handleLogin(userData) {
+    if (userData) setUser(userData);
     setLoggedIn(true);
   }
 
@@ -394,6 +402,8 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
         <ErrorBoundary key={activeNav}>
         {activeNav === "crm" ? (
           <CRMPage />
+        ) : activeNav === "aiagents" ? (
+          <AIAgentsPage token={user.token} userEmail={user.email} />
         ) : activeNav !== "home" ? (
           <div className="stub">
             <div className="stub-icon">{Icon[NAV.find((n) => n.id === activeNav).icon]({ width: 22, height: 22 })}</div>
@@ -407,8 +417,8 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
           <>
             <header className="topbar">
               <div>
-                <h1>Good morning, {userName}.</h1>
-                <p>{criticalErrors === 0 ? "Everything is running smoothly today." : `${criticalErrors} issue needs your attention.`}</p>
+                <h1>{getGreeting()}, {user.name}.</h1>
+                <p>{criticalErrors === 0 ? "Está tudo funcionando bem hoje." : `${criticalErrors} alerta${criticalErrors > 1 ? "s" : ""} precisa${criticalErrors > 1 ? "m" : ""} de atenção.`}</p>
               </div>
               <div className="topbar-right">
                 <div className="search-box">
@@ -421,8 +431,8 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
                 </button>
                 <div className="header-user">
                   <button className="header-user-btn" onClick={() => setMenuOpen((v) => !v)}>
-                    <span className="avatar">{userName.slice(0, 2).toUpperCase()}</span>
-                    <span>{userName} Costa</span>
+                    <span className="avatar">{user.name.slice(0, 2).toUpperCase()}</span>
+                    <span>{user.name}</span>
                     <Icon.chevron width={13} height={13} className={`user-caret${menuOpen ? " open" : ""}`} />
                   </button>
                   {menuOpen && (
@@ -647,7 +657,13 @@ export default function ZafraOperationsCenter({ userName = "João", userEmail = 
           display: flex;
           flex-direction: column;
           gap: 20px;
+          position: sticky;
+          top: 0;
+          height: 100vh;
+          overflow-y: auto;
+          scrollbar-width: none;
         }
+        .sidebar::-webkit-scrollbar { display: none; }
         .brand { display: flex; align-items: center; justify-content: center; padding: 6px 6px 16px; }
         .brand-logo {
           display: block; width: 128px; height: auto; max-width: 100%;

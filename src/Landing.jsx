@@ -14,11 +14,32 @@ import zafraLogo from "./zafra_logo_branca.png";
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
 
+/* ---------------------------------------------------------
+   AUTENTICAÇÃO via n8n
+   Contrato com o fluxo atual (login_zafra_central):
+
+   REQUEST  (POST, JSON): { email, senha }
+
+   RESPONSE que o node "Respond to Webhook1" devolve hoje:
+     Sucesso → { "sucesso": true, "nome": "...", "email": "...", ...outros campos }
+     Falha   → hoje NÃO existe resposta no caminho de falha (ver aviso
+               enviado no chat) — assim que isso for corrigido no n8n,
+               o ideal é responder { "sucesso": false, "error": "..." }
+
+   Enquanto AUTH_WEBHOOK_URL não for preenchida, o login continua
+   ilustrativo (qualquer coisa entra) — pra não travar o resto do
+   desenvolvimento enquanto o fluxo do n8n não estiver pronto.
+--------------------------------------------------------- */
+const AUTH_WEBHOOK_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/login_zafra_central";
+const AUTH_CONFIGURED = !AUTH_WEBHOOK_URL.startsWith("COLE_");
+
 export default function Landing({ onLogin }) {
   const trackRef = useRef(null);
   const [progress, setProgress] = useState(0);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState(null);
   const rafRef = useRef(null);
 
   useEffect(() => {
@@ -59,9 +80,34 @@ export default function Landing({ onLogin }) {
   const loginY = lerp(28, 0, loginOpacity);
   const loginActive = progress > 0.82;
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    onLogin?.();
+    setLoginError(null);
+
+    if (!AUTH_CONFIGURED) {
+      // Sem webhook configurado ainda: segue ilustrativo, não bloqueia o dev.
+      onLogin?.({ name: email.split("@")[0] || "João", email });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch(AUTH_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, senha: password }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        onLogin?.({ name: data.nome || email.split("@")[0], email: data.email || email, token: data.token || null });
+      } else {
+        setLoginError(data.error || "Email ou senha inválidos.");
+      }
+    } catch (err) {
+      setLoginError("Não consegui falar com o servidor de login. Tenta de novo.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -83,10 +129,11 @@ export default function Landing({ onLogin }) {
           <form className="stage-login" style={{ opacity: loginOpacity, transform: `translateY(${loginY}px)`, pointerEvents: loginActive ? "auto" : "none" }} onSubmit={handleSubmit}>
             <span className="login-eyebrow">Entrar</span>
             <h2>Bem-vindo de volta</h2>
-            <input type="email" placeholder="voce@zafra.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" />
-            <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
-            <button type="submit" className="login-btn">Entrar</button>
-            <p className="login-hint">Login ilustrativo por enquanto — qualquer coisa entra.</p>
+            <input type="email" placeholder="voce@zafra.com" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" required />
+            <input type="password" placeholder="Senha" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
+            <button type="submit" className="login-btn" disabled={loading}>{loading ? "Entrando…" : "Entrar"}</button>
+            {loginError && <p className="login-error">{loginError}</p>}
+            {!AUTH_CONFIGURED && <p className="login-hint">Login ilustrativo por enquanto — qualquer coisa entra.</p>}
           </form>
 
           <div className="stage-scroll-hint" style={{ opacity: 1 - clamp(progress / 0.1, 0, 1) }}>
@@ -145,6 +192,8 @@ export default function Landing({ onLogin }) {
           font-size: 17px; font-weight: 600; cursor: pointer; margin-top: 6px;
         }
         .login-btn:hover { background: #2a2a2c; }
+        .login-btn:disabled { opacity: .6; cursor: default; }
+        .login-error { font-size: 13px; color: #b3402f; margin: 0; }
         .login-hint { font-size: 13px; color: #a9a9ae; margin: 6px 0 0; }
 
         .stage-scroll-hint {
