@@ -30,7 +30,7 @@ const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
    ilustrativo (qualquer coisa entra) — pra não travar o resto do
    desenvolvimento enquanto o fluxo do n8n não estiver pronto.
 --------------------------------------------------------- */
-const AUTH_WEBHOOK_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook-test/login_zafra_central";
+const AUTH_WEBHOOK_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/login_zafra_central";
 const AUTH_CONFIGURED = !AUTH_WEBHOOK_URL.startsWith("COLE_");
 
 export default function Landing({ onLogin }) {
