@@ -186,60 +186,56 @@ const NAV = [
   { id: "settings", label: "Settings", icon: "gear" },
 ];
 
-const SYSTEM_HEALTH = [
-  { name: "Report Generator", status: "operational" },
-  { name: "CRM Sync", status: "operational" },
-  { name: "Lead Capture", status: "operational" },
-  { name: "WhatsApp Sender", status: "operational" },
-  { name: "Analytics Engine", status: "operational" },
-  { name: "Database", status: "operational" },
-  { name: "File Storage", status: "operational" },
-  { name: "Notification Service", status: "operational" },
+const HOME_LEADS_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/crm_get_leads";
+const HOME_RECENT_ACTIVITY_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/crm_recent_activity";
+const HOME_LIST_CONVERSATIONS_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/list_conversations";
+const HOME_LIST_USERS_URL = "COLE_A_URL_DO_WEBHOOK_list_users_AQUI";
+const HOME_LIST_USERS_CONFIGURED = !HOME_LIST_USERS_URL.startsWith("COLE_");
+const HOME_AGENT_IDS = ["a1", "a2", "a3"]; // mesmos ids do AIAgentsPage
+
+const HOME_STAGES = [
+  { id: "leads", label: "Leads" },
+  { id: "contacted", label: "Contacted" },
+  { id: "proposal", label: "Proposal" },
+  { id: "closing", label: "Closing" },
+  { id: "won", label: "Won" },
 ];
 
-const INITIAL_REPORTS = [
-  { client: "Hotel Aurora", time: "10:42", delivered: true },
-  { client: "Ecotur Travel", time: "10:28", delivered: true },
-  { client: "Andes Trips", time: "10:15", delivered: true },
-  { client: "Blue Sky Tourism", time: "09:57", delivered: true },
-  { client: "Lighthouse Hotel", time: "09:41", delivered: true },
-  { client: "Grado Dez", time: "09:20", delivered: true },
-  { client: "Zerando o Chile", time: "09:05", delivered: true },
-];
-
-const PIPELINE = [
-  { stage: "Leads", value: 53, icon: "users" },
-  { stage: "Contacted", value: 21, icon: "clock" },
-  { stage: "Proposal", value: 8, icon: "doc" },
-  { stage: "Closing", value: 3, icon: "target" },
-  { stage: "Won", value: 2, icon: "check" },
-];
-
-const INITIAL_ALERTS = [
-  {
-    id: "a1",
-    title: "Report Delivery Failed",
-    client: "Andes Trips",
-    lastRun: "09:42",
-    error: "Webhook Timeout",
-  },
-];
-
-const INITIAL_TASKS = [
-  { id: "t1", label: "Follow-up with Maria (Eco Travel)", time: "11:00", done: false },
-  { id: "t2", label: "Proposal for Hotel Costa Azul", time: "14:00", done: false },
-  { id: "t3", label: "Review Q2 Dashboard", time: "15:30", done: false },
-  { id: "t4", label: "Approve Campaign — Summer 2024", time: "16:30", done: false },
-  { id: "t5", label: "Sync CRM contacts for Grado Dez", time: "17:15", done: false },
-];
-
-const INITIAL_ACTIVITY = [
-  { time: "10:42", text: "Report generated for Hotel Aurora", tone: "ok" },
-  { time: "10:15", text: "New lead captured: Explorer Club", tone: "ok" },
-  { time: "09:57", text: "CRM synchronized successfully", tone: "ok" },
-  { time: "09:43", text: "Report delivery failed: Andes Trips", tone: "bad" },
-  { time: "09:30", text: 'Automation "Daily Reports" executed', tone: "ok" },
-];
+function daysSince(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return 999;
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+function homeCurrency(n) {
+  return (Number(n) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+}
+function relativeTime(raw) {
+  const d = new Date(raw);
+  if (isNaN(d)) return "";
+  const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (days <= 0) return "hoje";
+  if (days === 1) return "ontem";
+  if (days < 7) return `há ${days}d`;
+  return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+}
+function toISODate(d) {
+  return d.toISOString().slice(0, 10);
+}
+function computeHomeRange(preset, customFrom, customTo) {
+  if (preset === "custom") return { from: customFrom || null, to: customTo || null };
+  const to = toISODate(new Date());
+  const days = preset === "today" ? 0 : preset === "7d" ? 6 : 29;
+  const fromDate = new Date();
+  fromDate.setDate(fromDate.getDate() - days);
+  return { from: toISODate(fromDate), to };
+}
+function homePeriodLabel(preset, from, to) {
+  if (preset === "today") return "Hoje";
+  if (preset === "7d") return "Últimos 7 dias";
+  if (preset === "30d") return "Últimos 30 dias";
+  if (preset === "custom" && from && to) return `${from} – ${to}`;
+  return "Selecionar período";
+}
 
 function todayLabel() {
   return new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).replace(".", "");
@@ -289,6 +285,17 @@ export default function ZafraOperationsCenter() {
   const [user, setUser] = useState({ name: "João", email: "joao.costa@zafra.com" });
   const [loggedIn, setLoggedIn] = useState(false);
 
+  // Admin sempre tem acesso total, não importa o que estiver (ou não) nas
+  // colunas access_crm/access_agents — só essas colunas valem pra outros papéis.
+  const isAdmin = String(user.role || "").trim().toLowerCase() === "admin";
+  const hasCrmAccess = isAdmin || String(user.accessCrm || "").trim().toUpperCase() === "TRUE";
+  const hasAgentsAccess = isAdmin || String(user.accessAgents || "").trim().toUpperCase() === "TRUE";
+  const visibleNav = NAV.filter((item) => {
+    if (item.id === "crm") return hasCrmAccess;
+    if (item.id === "aiagents") return hasAgentsAccess;
+    return true;
+  });
+
   // Reseta o scroll pro topo só DEPOIS que a Landing terminou de sumir da
   // tela (a animação de saída dura 0.45s) — se resetar antes, o scroll
   // forçado mexe na posição que a própria Landing usa pra decidir o que
@@ -301,38 +308,127 @@ export default function ZafraOperationsCenter() {
   }, [loggedIn]);
 
   const [activeNav, setActiveNav] = useState("home");
-  const [reports, setReports] = useState(INITIAL_REPORTS);
-  const [showAllReports, setShowAllReports] = useState(false);
-  const [alerts, setAlerts] = useState(INITIAL_ALERTS);
-  const [rerunning, setRerunning] = useState(null);
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
-  const [activity, setActivity] = useState(INITIAL_ACTIVITY);
+
+  useEffect(() => {
+    if (!visibleNav.some((item) => item.id === activeNav)) setActiveNav("home");
+  }, [activeNav, hasCrmAccess, hasAgentsAccess]);
+  const [homeLeads, setHomeLeads] = useState([]);
+  const [homeLeadsLoading, setHomeLeadsLoading] = useState(true);
+  const [homeActivities, setHomeActivities] = useState([]);
+  const [homeActivitiesLoading, setHomeActivitiesLoading] = useState(true);
+  const [agentsUsage, setAgentsUsage] = useState({ totalConversations: 0, lastUsed: null });
+  const [teamUsers, setTeamUsers] = useState([]);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const pendingTasks = useMemo(() => tasks.filter((t) => !t.done).length, [tasks]);
-  const deliveredReports = reports.filter((r) => r.delivered).length;
-  const visibleReports = showAllReports ? reports : reports.slice(0, 5);
+  const [homePeriodPreset, setHomePeriodPreset] = useState("7d");
+  const [homeCustomFrom, setHomeCustomFrom] = useState("");
+  const [homeCustomTo, setHomeCustomTo] = useState("");
+  const [dateMenuOpen, setDateMenuOpen] = useState(false);
+  const [draftPreset, setDraftPreset] = useState("7d");
+  const [draftFrom, setDraftFrom] = useState("");
+  const [draftTo, setDraftTo] = useState("");
+  const homeRange = useMemo(
+    () => computeHomeRange(homePeriodPreset, homeCustomFrom, homeCustomTo),
+    [homePeriodPreset, homeCustomFrom, homeCustomTo]
+  );
+  const draftRange = useMemo(() => computeHomeRange(draftPreset, draftFrom, draftTo), [draftPreset, draftFrom, draftTo]);
 
-  function toggleTask(id) {
-    setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t)));
+  function openDateMenu() {
+    setDraftPreset(homePeriodPreset);
+    setDraftFrom(homeCustomFrom);
+    setDraftTo(homeCustomTo);
+    setDateMenuOpen(true);
+  }
+  function applyDateMenu() {
+    setHomePeriodPreset(draftPreset);
+    if (draftPreset === "custom") { setHomeCustomFrom(draftFrom); setHomeCustomTo(draftTo); }
+    setDateMenuOpen(false);
   }
 
-  function resolveAlert(alert) {
-    setRerunning(alert.id);
-    setTimeout(() => {
-      setAlerts((prev) => prev.filter((a) => a.id !== alert.id));
-      setActivity((prev) => [
-        { time: nowLabel(), text: `Automation re-run succeeded: ${alert.client}`, tone: "ok" },
-        ...prev,
-      ]);
-      setReports((prev) => [{ client: alert.client, time: nowLabel(), delivered: true }, ...prev]);
-      setRerunning(null);
-    }, 1100);
-  }
+  useEffect(() => {
+    if (!loggedIn || !user.token) return;
 
-  const totalDeals = PIPELINE.reduce((sum, s) => sum + s.value, 0);
-  const pipelinePct = Math.round(((totalDeals - PIPELINE[0].value) / totalDeals) * 100);
-  const criticalErrors = alerts.length;
+    setHomeLeadsLoading(true);
+    fetch(HOME_LEADS_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: user.token }) })
+      .then((r) => r.json())
+      .then((data) => { if (data.sucesso) setHomeLeads(data.leads || []); })
+      .catch(() => {})
+      .finally(() => setHomeLeadsLoading(false));
+
+    if (hasAgentsAccess) {
+      Promise.all(
+        HOME_AGENT_IDS.map((id) =>
+          fetch(HOME_LIST_CONVERSATIONS_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: user.token, agent_id: id }) })
+            .then((r) => r.json())
+            .then((data) => (data.sucesso ? data.conversations || [] : []))
+            .catch(() => [])
+        )
+      ).then((results) => {
+        const all = results.flat();
+        const lastUsed = all.reduce((latest, c) => (!latest || new Date(c.updated_at) > new Date(latest) ? c.updated_at : latest), null);
+        setAgentsUsage({ totalConversations: all.length, lastUsed });
+      });
+    }
+
+    if (isAdmin && HOME_LIST_USERS_CONFIGURED) {
+      fetch(HOME_LIST_USERS_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: user.token }) })
+        .then((r) => r.json())
+        .then((data) => { if (data.sucesso) setTeamUsers(data.users || []); })
+        .catch(() => {});
+    }
+  }, [loggedIn, user.token]);
+
+  // Separado do efeito acima porque precisa rerodar toda vez que o período
+  // selecionado no chip de data mudar (não só no login).
+  useEffect(() => {
+    if (!loggedIn || !user.token) return;
+    if (homePeriodPreset === "custom" && (!homeRange.from || !homeRange.to)) return; // espera os dois campos
+    setHomeActivitiesLoading(true);
+    fetch(HOME_RECENT_ACTIVITY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: user.token, from: homeRange.from, to: homeRange.to }),
+    })
+      .then((r) => r.json())
+      .then((data) => { if (data.sucesso) setHomeActivities(data.activities || []); })
+      .catch(() => {})
+      .finally(() => setHomeActivitiesLoading(false));
+  }, [loggedIn, user.token, homeRange.from, homeRange.to]);
+
+  const periodLeadsCount = useMemo(() => {
+    if (!homeRange.from || !homeRange.to) return 0;
+    return homeLeads.filter((l) => {
+      const d = String(l.created_at || "").slice(0, 10);
+      return d && d >= homeRange.from && d <= homeRange.to;
+    }).length;
+  }, [homeLeads, homeRange]);
+
+  const pipelineSummary = useMemo(() => {
+    const totalValue = homeLeads.reduce((s, l) => s + (Number(l.value) || 0), 0);
+    const stale = homeLeads.filter((l) => daysSince(l.last_contact_date) > 6).length;
+    const won = homeLeads.filter((l) => l.stage === "won").length;
+    return { count: homeLeads.length, totalValue, stale, won };
+  }, [homeLeads]);
+
+  const stageBreakdown = useMemo(
+    () => HOME_STAGES.map((s) => ({ ...s, count: homeLeads.filter((l) => l.stage === s.id).length })),
+    [homeLeads]
+  );
+
+  const teamOverview = useMemo(() => {
+    if (!isAdmin) return [];
+    const counts = {};
+    homeLeads.forEach((l) => {
+      const email = l.owner_email || "—";
+      counts[email] = (counts[email] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([email, count]) => {
+        const u = teamUsers.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+        return { email, name: u?.name || email.split("@")[0], count };
+      })
+      .sort((a, b) => b.count - a.count);
+  }, [homeLeads, teamUsers, isAdmin]);
 
   // Reseta o scroll pro topo ao logar — sem isso, a página do dashboard
   // "herda" a posição de scroll de onde a Landing parou (lá embaixo, no
@@ -366,7 +462,7 @@ export default function ZafraOperationsCenter() {
         </div>
 
         <nav className="nav">
-          {NAV.map((item) => (
+          {visibleNav.map((item) => (
             <button
               key={item.id}
               className={`nav-item${activeNav === item.id ? " active" : ""}`}
@@ -401,7 +497,7 @@ export default function ZafraOperationsCenter() {
       <main className="content">
         <ErrorBoundary key={activeNav}>
         {activeNav === "crm" ? (
-          <CRMPage />
+          <CRMPage token={user.token} userEmail={user.email} />
         ) : activeNav === "aiagents" ? (
           <AIAgentsPage token={user.token} userEmail={user.email} />
         ) : activeNav !== "home" ? (
@@ -418,7 +514,7 @@ export default function ZafraOperationsCenter() {
             <header className="topbar">
               <div>
                 <h1>{getGreeting()}, {user.name}.</h1>
-                <p>{criticalErrors === 0 ? "Está tudo funcionando bem hoje." : `${criticalErrors} alerta${criticalErrors > 1 ? "s" : ""} precisa${criticalErrors > 1 ? "m" : ""} de atenção.`}</p>
+                <p>{pipelineSummary.stale === 0 ? "Nenhum lead parado no momento." : `${pipelineSummary.stale} lead${pipelineSummary.stale > 1 ? "s" : ""} parado${pipelineSummary.stale > 1 ? "s" : ""} precisando de atenção.`}</p>
               </div>
               <div className="topbar-right">
                 <div className="search-box">
@@ -427,7 +523,7 @@ export default function ZafraOperationsCenter() {
                 </div>
                 <button className="icon-btn" aria-label="Notifications">
                   <Icon.bell width={16} height={16} />
-                  {criticalErrors > 0 && <span className="icon-dot" />}
+                  {pipelineSummary.stale > 0 && <span className="icon-dot" />}
                 </button>
                 <div className="header-user">
                   <button className="header-user-btn" onClick={() => setMenuOpen((v) => !v)}>
@@ -443,164 +539,167 @@ export default function ZafraOperationsCenter() {
                     </div>
                   )}
                 </div>
-                <span className="date-chip">
-                  <Icon.doc width={13} height={13} />
-                  {todayLabel()}
-                  <Icon.chevron width={12} height={12} />
-                </span>
+                <div className="date-chip-wrap">
+                  <button className="date-chip" onClick={openDateMenu}>
+                    <Icon.doc width={13} height={13} />
+                    {homePeriodLabel(homePeriodPreset, homeRange.from, homeRange.to)}
+                    <Icon.chevron width={12} height={12} className={dateMenuOpen ? "user-caret open" : "user-caret"} />
+                  </button>
+                  {dateMenuOpen && (
+                    <div className="date-overlay" onClick={() => setDateMenuOpen(false)}>
+                      <div className="date-picker-panel" onClick={(e) => e.stopPropagation()}>
+                        <h3 className="date-picker-title">Escolher período</h3>
+
+                        <div className="date-preset-tabs">
+                          {[["today", "Hoje"], ["7d", "Últimos 7 dias"], ["30d", "Últimos 30 dias"], ["custom", "Personalizado"]].map(([id, label]) => (
+                            <button
+                              key={id}
+                              className={draftPreset === id ? "date-preset-tab active" : "date-preset-tab"}
+                              onClick={() => setDraftPreset(id)}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="date-picker-inputs">
+                          <div className="date-picker-field">
+                            <label>De</label>
+                            <input type="date" value={draftFrom} onChange={(e) => { setDraftFrom(e.target.value); setDraftPreset("custom"); }} />
+                          </div>
+                          <div className="date-picker-field">
+                            <label>Até</label>
+                            <input type="date" value={draftTo} onChange={(e) => { setDraftTo(e.target.value); setDraftPreset("custom"); }} />
+                          </div>
+                        </div>
+
+                        <p className="date-picker-preview">{homePeriodLabel(draftPreset, draftRange.from, draftRange.to)}</p>
+
+                        <div className="date-picker-actions">
+                          <button className="date-picker-cancel" onClick={() => setDateMenuOpen(false)}>Cancelar</button>
+                          <button className="date-picker-apply" disabled={draftPreset === "custom" && (!draftFrom || !draftTo)} onClick={applyDateMenu}>Aplicar</button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </header>
 
             <section className="stats-grid">
-              <StatCard icon="bolt" value="23" label={<>Automations<br />running</>} delta="↑ 3 since yesterday" />
-              <StatCard icon="doc" value={reports.length} label={<>Reports<br />generated</>} delta="↑ 18 since yesterday" />
-              <StatCard icon="users" value="12" label={<>New leads<br />today</>} delta="↑ 5 since yesterday" />
+              <StatCard icon="users" value={homeLeadsLoading ? "…" : pipelineSummary.count} label={<>Leads<br />no pipeline</>} />
+              <StatCard icon="doc" value={homeLeadsLoading ? "…" : homeCurrency(pipelineSummary.totalValue)} label={<>Valor<br />em pipeline</>} />
               <StatCard
                 icon="shield"
-                tone={criticalErrors ? "accent" : undefined}
-                value={criticalErrors}
-                label={<>Critical<br />errors</>}
-                delta={criticalErrors ? `${criticalErrors} needs attention` : "All systems operational"}
+                tone={pipelineSummary.stale ? "accent" : undefined}
+                value={homeLeadsLoading ? "…" : pipelineSummary.stale}
+                label={<>Leads<br />parados</>}
+                delta={pipelineSummary.stale ? "precisam de atenção" : "tudo em dia"}
               />
+              {hasAgentsAccess ? (
+                <StatCard icon="bolt" value={agentsUsage.totalConversations} label={<>Conversas<br />com agentes</>} delta={agentsUsage.lastUsed ? `última ${relativeTime(agentsUsage.lastUsed)}` : "nenhuma ainda"} />
+              ) : (
+                <StatCard icon="check" value={homeLeadsLoading ? "…" : pipelineSummary.won} label={<>Leads<br />ganhos</>} />
+              )}
             </section>
 
-            <section className="grid-3">
-              <div className="card panel">
-                <PanelHeader icon="pulse" title="System Health" />
-                <div className="panel-row">
-                  <span>All systems are operational</span>
-                  <span className="pill">All good</span>
-                </div>
-                <ul className="health-list">
-                  {SYSTEM_HEALTH.map((s) => (
-                    <li key={s.name}>
-                      <span className="dot ok" />
-                      {s.name}
-                      <span className="status">Operational</span>
-                    </li>
-                  ))}
-                </ul>
-                <button className="panel-view-all">
-                  View all systems <Icon.arrow width={13} height={13} />
-                </button>
-              </div>
-
-              <div className="card panel">
-                <PanelHeader
-                  icon="doc"
-                  title="Client Reports"
-                  action="View all"
-                  onAction={() => setShowAllReports((v) => !v)}
-                />
-                <div className="panel-row">
-                  <span>Generated Today</span>
-                  <span className="pill">{deliveredReports}/{reports.length} Delivered</span>
-                </div>
-                <ul className="report-list">
-                  {visibleReports.map((r, i) => (
-                    <li key={r.client + i}>
-                      <Icon.check width={15} height={15} className="ok-icon" />
-                      {r.client}
-                      <span className="time">{r.time}</span>
-                    </li>
-                  ))}
-                </ul>
-                <button className="panel-view-all">
-                  View all reports <Icon.arrow width={13} height={13} />
-                </button>
-              </div>
-
-              <div className="card panel">
-                <PanelHeader icon="users" title="Prospecting CRM" />
-                <p className="panel-sub">Pipeline Overview</p>
-                <div className="pipeline">
-                  {PIPELINE.map((s) => (
-                    <div className="pipeline-stage" key={s.stage}>
-                      <span className="pipeline-label">{s.stage}</span>
-                      <strong>{s.value}</strong>
-                      {Icon[s.icon]({ width: 14, height: 14 })}
-                    </div>
-                  ))}
-                </div>
-                <div className="panel-row">
-                  <span>Total deals in pipeline: {totalDeals}</span>
-                  <span className="pipeline-pct">{pipelinePct}%</span>
-                </div>
-                <div className="progress-track">
-                  <div className="progress-fill" style={{ width: `${pipelinePct}%` }} />
-                </div>
-                <button className="link-btn pipeline-view-crm" onClick={() => setActiveNav("crm")}>
-                  View CRM <Icon.arrow width={12} height={12} />
-                </button>
-              </div>
-            </section>
-
-            <section className="grid-3">
-              <div className="card panel">
-                <PanelHeader icon="alert" title="Automation Alerts" />
-                {alerts.length === 0 ? (
-                  <p className="empty-ok">
-                    <Icon.check width={15} height={15} className="ok-icon" /> No active alerts.
-                  </p>
-                ) : (
-                  alerts.map((a) => (
-                    <div className="alert-box" key={a.id}>
-                      <Icon.alert width={18} height={18} className="alert-icon" />
-                      <div>
-                        <strong>{a.title}</strong>
-                        <p>
-                          Client: {a.client}
-                          <br />
-                          Last execution: {a.lastRun}
-                          <br />
-                          Error: {a.error}
-                        </p>
-                        <button className="rerun-btn" onClick={() => resolveAlert(a)} disabled={rerunning === a.id}>
-                          <Icon.refresh width={13} height={13} className={rerunning === a.id ? "spin" : ""} />
-                          {rerunning === a.id ? "Re-running…" : "Run Automation Again"}
-                        </button>
-                      </div>
-                    </div>
-                  ))
+            {(hasCrmAccess || hasAgentsAccess) && (
+              <section className="quick-shortcuts">
+                {hasCrmAccess && (
+                  <button className="shortcut-btn" onClick={() => setActiveNav("crm")}>
+                    <span className="shortcut-icon">{Icon.users({ width: 16, height: 16 })}</span>
+                    Abrir CRM <Icon.arrow width={13} height={13} />
+                  </button>
                 )}
-                <p className="panel-foot warn">
-                  {alerts.length} alert{alerts.length === 1 ? "" : "s"} requires your attention
-                </p>
-              </div>
+                {hasAgentsAccess && (
+                  <button className="shortcut-btn" onClick={() => setActiveNav("aiagents")}>
+                    <span className="shortcut-icon">{Icon.sparkle({ width: 16, height: 16 })}</span>
+                    Abrir AI Agents <Icon.arrow width={13} height={13} />
+                  </button>
+                )}
+              </section>
+            )}
 
-              <div className="card panel">
-                <PanelHeader icon="list" title="Today's Tasks" />
-                <ul className="task-list">
-                  {tasks.map((t) => (
-                    <li key={t.id}>
-                      <label>
-                        <input type="checkbox" checked={t.done} onChange={() => toggleTask(t.id)} />
-                        <span className={t.done ? "done" : ""}>{t.label}</span>
-                      </label>
-                      <span className="time">{t.time}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="panel-foot">{pendingTasks} tasks pending</p>
-              </div>
+            <section className="grid-3">
+              {hasCrmAccess && (
+                <div className="card panel">
+                  <PanelHeader icon="users" title="Prospecting CRM" />
+                  <p className="panel-sub">Pipeline por estágio</p>
+                  <div className="pipeline">
+                    {stageBreakdown.map((s) => (
+                      <div className="pipeline-stage" key={s.id}>
+                        <span className="pipeline-label">{s.label}</span>
+                        <strong>{s.count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <button className="link-btn pipeline-view-crm" onClick={() => setActiveNav("crm")}>
+                    Ver CRM <Icon.arrow width={12} height={12} />
+                  </button>
+                </div>
+              )}
 
-              <div className="card panel">
-                <PanelHeader icon="clock" title="Recent Activity" />
-                <ul className="activity-list">
-                  {activity.slice(0, 6).map((a, i) => (
-                    <li key={i}>
-                      <span className="time">{a.time}</span>
-                      {a.tone === "ok" ? (
-                        <span className="dot ok" />
-                      ) : (
-                        <Icon.alert width={13} height={13} className="activity-warn" />
-                      )}
-                      {a.text}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {hasCrmAccess && (
+                <div className="card panel">
+                  <PanelHeader icon="clock" title="Atividade Recente" />
+                  <p className="panel-sub">
+                    {periodLeadsCount} lead{periodLeadsCount === 1 ? "" : "s"} criado{periodLeadsCount === 1 ? "" : "s"} · {homePeriodLabel(homePeriodPreset, homeRange.from, homeRange.to)}
+                  </p>
+                  {homeActivitiesLoading ? (
+                    <p className="panel-sub">Carregando…</p>
+                  ) : homeActivities.length === 0 ? (
+                    <p className="empty-ok">Nenhuma interação nesse período.</p>
+                  ) : (
+                    <ul className="activity-list">
+                      {homeActivities.slice(0, 6).map((a, i) => (
+                        <li key={i}>
+                          <span className="time">{relativeTime(a.date)}</span>
+                          <span className="dot ok" />
+                          <strong>{a.lead_name}</strong>: {a.text}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+
+              {hasAgentsAccess && (
+                <div className="card panel">
+                  <PanelHeader icon="bolt" title="AI Agents" />
+                  <div className="panel-row">
+                    <span>Conversas ativas</span>
+                    <span className="pill">{agentsUsage.totalConversations}</span>
+                  </div>
+                  <p className="panel-sub">{agentsUsage.lastUsed ? `Última conversa: ${relativeTime(agentsUsage.lastUsed)}` : "Nenhuma conversa ainda."}</p>
+                  <button className="panel-view-all" onClick={() => setActiveNav("aiagents")}>
+                    Abrir AI Agents <Icon.arrow width={13} height={13} />
+                  </button>
+                </div>
+              )}
             </section>
+
+            {isAdmin && (
+              <section className="grid-3">
+                <div className="card panel team-panel">
+                  <PanelHeader icon="users" title="Visão de Equipe" />
+                  {homeLeadsLoading ? (
+                    <p className="panel-sub">Carregando…</p>
+                  ) : teamOverview.length === 0 ? (
+                    <p className="empty-ok">Nenhum lead cadastrado ainda.</p>
+                  ) : (
+                    <ul className="health-list">
+                      {teamOverview.map((t) => (
+                        <li key={t.email}>
+                          <span className="dot ok" />
+                          {t.name}
+                          <span className="status">{t.count} lead{t.count === 1 ? "" : "s"}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
+            )}
           </>
         )}
         </ErrorBoundary>
@@ -729,10 +828,39 @@ export default function ZafraOperationsCenter() {
         .icon-btn { position: relative; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; }
         .icon-btn:hover { background: var(--sand); }
         .icon-dot { position: absolute; top: 6px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
-        .date-chip { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; white-space: nowrap; }
+        .date-chip-wrap { position: relative; }
+        .date-chip { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--ink-soft); border: 1px solid var(--line); border-radius: 8px; padding: 7px 11px; white-space: nowrap; background: #fff; cursor: pointer; }
+        .date-chip:hover { border-color: var(--ink-faint); }
         .date-chip svg:last-child { color: var(--ink-faint); }
 
+        .date-overlay { position: fixed; inset: 0; background: rgba(19,19,20,.32); display: flex; align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+        .date-picker-panel {
+          background: #fff; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,.25);
+          width: 340px; max-width: 100%; padding: 22px; display: flex; flex-direction: column; gap: 16px;
+        }
+        .date-picker-title { margin: 0; font-size: 15px; font-weight: 700; color: var(--ink); }
+
+        .date-preset-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+        .date-preset-tab { background: var(--sand); border: 1px solid transparent; color: var(--ink-soft); padding: 8px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .date-preset-tab:hover { border-color: var(--ink-faint); }
+        .date-preset-tab.active { background: var(--ink); color: #fff; }
+
+        .date-picker-inputs { display: flex; gap: 10px; }
+        .date-picker-field { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+        .date-picker-field label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .3px; color: var(--ink-faint); font-weight: 600; }
+        .date-picker-field input { border: 1px solid var(--line); border-radius: 8px; padding: 9px 10px; font-size: 12.5px; font-family: inherit; color: var(--ink); width: 100%; }
+        .date-picker-preview { font-size: 12px; color: var(--ink-soft); background: var(--sand); border-radius: 8px; padding: 9px 12px; margin: 0; }
+
+        .date-picker-actions { display: flex; justify-content: flex-end; gap: 8px; }
+        .date-picker-cancel { background: none; border: 1px solid var(--line); color: var(--ink-soft); padding: 8px 14px; border-radius: 7px; font-size: 12.5px; font-weight: 600; }
+        .date-picker-apply { background: var(--ink); color: #fff; border: none; padding: 8px 16px; border-radius: 7px; font-size: 12.5px; font-weight: 600; }
+        .date-picker-apply:disabled { opacity: .4; cursor: not-allowed; }
+
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+        .quick-shortcuts { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+        .shortcut-btn { display: flex; align-items: center; gap: 8px; background: #ffffff; border: 1px solid #e7e7e9; color: #131314; font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 9px; }
+        .shortcut-btn:hover { border-color: #a9a9ae; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+        .shortcut-icon { display: flex; align-items: center; color: #75757a; }
         .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
         .stat-card { padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
         .stat-icon {

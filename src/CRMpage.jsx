@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { csvUrl, daysSince, parseSheetDate, postToSheet, useSheetTable } from "./Sheets";
 
 /* ---------------------------------------------------------
@@ -15,23 +15,30 @@ import { csvUrl, daysSince, parseSheetDate, postToSheet, useSheetTable } from ".
    - Bulk selection + bulk actions in the table, standard in
      every modern data-table (shadcn DataTable, Attio, HubSpot)
 
-   DADOS: lê de duas abas do Google Sheets (CSV export) e escreve
-   via Apps Script (Code.gs). Preencha CONFIG abaixo com os IDs
-   da sua planilha — enquanto não preencher, a página continua
-   funcionando com os dados de exemplo (MOCK_LEADS), só que sem
-   persistir nada.
+   DADOS: Leads/Activities agora passam por webhooks autenticados
+   do n8n (crm_get_leads, crm_get_activities, crm_write) — cada
+   pessoa só vê/edita os próprios leads, exceto admin, que vê e
+   edita tudo (inclusive reatribuir o dono de um lead).
+
+   Tags continuam pelo caminho antigo (CSV público + Apps Script)
+   — não têm dono nem informação sensível, então não precisavam
+   entrar nessa migração de segurança.
 --------------------------------------------------------- */
 
+const N8N_BASE = "https://n8n-n8n.yypjz6.easypanel.host/webhook";
+const LEADS_URL = `${N8N_BASE}/crm_get_leads`;
+const ACTIVITIES_URL = `${N8N_BASE}/crm_get_activities`;
+const WRITE_URL = `${N8N_BASE}/crm_write`;
+const LIST_USERS_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/list_users";
+const LIST_USERS_CONFIGURED = !LIST_USERS_URL.startsWith("COLE_");
+
+// Só usado pra Tags (CSV público + Apps Script) — Leads/Activities não usam mais isso.
 const CONFIG = {
   SHEET_ID: "1Dsa4iFcHWfxvln2nSCoxS5vGpaLmgtPr4BErOdzG7O4",
-  LEADS_GID: "0",
-  ACTIVITIES_GID: "1029573554",
   TAGS_GID: "1719715174",
   WEBAPP_URL: "https://script.google.com/macros/s/AKfycbxYIdI65nXKW8lZ-HoieceJg72fxqmo4q6F_ce-w62UGrx_YkZrK00_VshX9Fm_m1dF/exec",
 };
-const IS_CONFIGURED = !CONFIG.SHEET_ID.startsWith("COLE_") && !CONFIG.WEBAPP_URL.startsWith("COLE_");
-const LEADS_CSV_URL = csvUrl(CONFIG.SHEET_ID, CONFIG.LEADS_GID);
-const ACTIVITIES_CSV_URL = csvUrl(CONFIG.SHEET_ID, CONFIG.ACTIVITIES_GID);
+const TAGS_CONFIGURED = !CONFIG.SHEET_ID.startsWith("COLE_");
 const TAGS_CSV_URL = csvUrl(CONFIG.SHEET_ID, CONFIG.TAGS_GID);
 
 const STAGES = [
@@ -48,11 +55,6 @@ const DEFAULT_STAGE = { id: "unknown", label: "Sem estágio", dot: "#c7c7c9" };
 
 const SOURCES = ["Indicação", "Instagram", "Site", "Evento", "Cold outreach"];
 
-const OWNERS = {
-  "João": "#131314",
-  "Ana": "#75757a",
-};
-
 // Paleta estilo ClickUp — cores prontas pra escolher ao criar uma tag nova.
 const TAG_PALETTE = [
   "#e05252", "#e08a3c", "#d9b23c", "#5aa66b",
@@ -60,45 +62,34 @@ const TAG_PALETTE = [
   "#8a8a8d", "#6b5344",
 ];
 
-const MOCK_TAGS = [
-  { id: "tag1", name: "Quente 🔥", color: "#e05252" },
-  { id: "tag2", name: "Alto ticket", color: "#5aa66b" },
-  { id: "tag3", name: "Indicação VIP", color: "#4d7fd4" },
-  { id: "tag4", name: "Precisa nutrir", color: "#d9b23c" },
-];
+// Cores pra distinguir donos de lead visualmente — atribuídas por hash do
+// e-mail, então a mesma pessoa sempre cai na mesma cor, sem precisar de
+// um mapa fixo por nome (que não escalava conforme a equipe crescia).
+const OWNER_PALETTE = ["#131314", "#4a4a4d", "#75757a", "#2e6fc9", "#7c5cd4", "#3c9ea8"];
+function ownerColor(email) {
+  if (!email) return "#a9a9ae";
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) hash = (hash * 31 + email.charCodeAt(i)) >>> 0;
+  return OWNER_PALETTE[hash % OWNER_PALETTE.length];
+}
 
-const MOCK_LEADS = [
-  { id: "l1", name: "Pousada Vento Sul", contact: "Renata Alves", stage: "leads", value: 3200, source: "Indicação", daysAgo: 1, owner: "João", notes: [], tagIds: ["tag1"] },
-  { id: "l2", name: "Chile Aventura Tours", contact: "Ignacio Vera", stage: "leads", value: 4800, source: "Instagram", daysAgo: 1, owner: "João", notes: [], tagIds: [] },
-  { id: "l3", name: "Explorer Club", contact: "Marcos Lima", stage: "leads", value: 2600, source: "Site", daysAgo: 2, owner: "João", notes: [], tagIds: ["tag4"] },
-  { id: "l4", name: "Trilha Norte Expedições", contact: "Bianca Souza", stage: "leads", value: 3900, source: "Cold outreach", daysAgo: 8, owner: "Ana", notes: [], tagIds: [] },
-  { id: "l5", name: "Costa Azul Hospedagens", contact: "Rafael Dias", stage: "contacted", value: 5200, source: "Evento", daysAgo: 2, owner: "João", notes: [{ date: "16 jul", text: "Ligação inicial, demonstrou interesse." }], tagIds: ["tag2"] },
-  { id: "l6", name: "Eco Travel", contact: "Maria Fontes", stage: "contacted", value: 4100, source: "Indicação", daysAgo: 1, owner: "João", notes: [{ date: "17 jul", text: "Enviado deck de apresentação." }], tagIds: ["tag1", "tag3"] },
-  { id: "l7", name: "Deserto Vivo Turismo", contact: "Pablo Rios", stage: "contacted", value: 3300, source: "Instagram", daysAgo: 9, owner: "Ana", notes: [], tagIds: [] },
-  { id: "l8", name: "Rota das Cataratas", contact: "Juliana Prado", stage: "proposal", value: 6800, source: "Site", daysAgo: 3, owner: "João", notes: [{ date: "15 jul", text: "Proposta enviada, aguardando retorno." }], tagIds: ["tag2"] },
-  { id: "l9", name: "Bariloche Total", contact: "Sofía Méndez", stage: "proposal", value: 7400, source: "Evento", daysAgo: 6, owner: "Ana", notes: [], tagIds: [] },
-  { id: "l10", name: "Hotel Costa Azul", contact: "Fernando Melo", stage: "closing", value: 9200, source: "Indicação", daysAgo: 4, owner: "João", notes: [{ date: "12 jul", text: "Negociando condições de pagamento." }], tagIds: ["tag2", "tag3"] },
-  { id: "l11", name: "Grado Dez Turismo", contact: "Rocío Fuentes", stage: "closing", value: 8600, source: "Cold outreach", daysAgo: 10, owner: "João", notes: [], tagIds: [] },
-  { id: "l12", name: "Zerando o Atacama", contact: "Tales Barreto", stage: "won", value: 11500, source: "Indicação", daysAgo: 12, owner: "Ana", notes: [{ date: "08 jul", text: "Contrato assinado 🎉" }], tagIds: ["tag2"] },
-];
-
-/** Linha crua do CSV (tudo string) → lead tipado que o resto da página usa. */
-function mapLeadRow(row) {
+/** Linha crua vinda do webhook → lead tipado que o resto da página usa. */
+function mapLeadRow(raw) {
   return {
-    id: row.id,
-    name: row.name,
-    contact: row.contact,
-    stage: row.stage,
-    value: Number(row.value) || 0,
-    source: row.source,
-    owner: row.owner,
-    daysAgo: daysSince(parseSheetDate(row.last_contact_date)),
-    tagIds: (row.tags || "").split(",").map((t) => t.trim()).filter(Boolean),
+    id: raw.id || "",
+    name: raw.name || "",
+    contact: raw.contact || "",
+    stage: raw.stage || "",
+    value: Number(raw.value) || 0,
+    source: raw.source || "",
+    ownerEmail: raw.owner_email || "",
+    daysAgo: daysSince(parseSheetDate(raw.last_contact_date)),
+    tagIds: String(raw.tags || "").split(",").map((t) => t.trim()).filter(Boolean),
   };
 }
 
-function mapActivityRow(row) {
-  return { id: row.id, leadId: row.lead_id, date: row.date, text: row.text };
+function mapActivityRow(raw) {
+  return { date: raw.date || "", text: raw.text || "", createdBy: raw.created_by || "" };
 }
 
 function mapTagRow(row) {
@@ -109,7 +100,8 @@ const currency = (n) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
 function initials(name) {
-  return name.split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
+  if (!name) return "?";
+  return String(name).split(" ").filter(Boolean).slice(0, 2).map((w) => w[0]).join("").toUpperCase();
 }
 
 function healthOf(daysAgo) {
@@ -124,17 +116,26 @@ function daysAgoLabel(daysAgo) {
   return `há ${daysAgo} dias`;
 }
 
-export default function CRMPage() {
-  const leadsTable = useSheetTable(IS_CONFIGURED ? LEADS_CSV_URL : null);
-  const activitiesTable = useSheetTable(IS_CONFIGURED ? ACTIVITIES_CSV_URL : null);
-  const tagsTable = useSheetTable(IS_CONFIGURED ? TAGS_CSV_URL : null);
+export default function CRMPage({ token, userEmail }) {
+  const tagsTable = useSheetTable(TAGS_CONFIGURED ? TAGS_CSV_URL : null);
+  const [tags, setTags] = useState([]);
 
-  const [leads, setLeads] = useState(IS_CONFIGURED ? [] : MOCK_LEADS);
-  const [tags, setTags] = useState(IS_CONFIGURED ? [] : MOCK_TAGS);
+  const [leads, setLeads] = useState([]);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [loadingLeads, setLoadingLeads] = useState(true);
+  const [leadsError, setLeadsError] = useState(null);
+
+  const [activitiesByLead, setActivitiesByLead] = useState({});
+  const [loadingActivities, setLoadingActivities] = useState(false);
+  const [activitiesError, setActivitiesError] = useState(null);
+
+  const [allUsers, setAllUsers] = useState([]); // pra reatribuição + filtro do admin
+  const [ownerFilter, setOwnerFilter] = useState("all"); // só usado pelo admin
+
   const [view, setView] = useState("kanban"); // "kanban" | "table"
   const [query, setQuery] = useState("");
   const [stageFilter, setStageFilter] = useState("all");
-  const [tagFilter, setTagFilter] = useState(new Set()); // ids de tags ativas no filtro
+  const [tagFilter, setTagFilter] = useState(new Set());
   const [segment, setSegment] = useState("all"); // "all" | "mine" | "stale"
   const [dragOverStage, setDragOverStage] = useState(null);
   const [sort, setSort] = useState({ key: "value", dir: "desc" });
@@ -146,29 +147,108 @@ export default function CRMPage() {
   const [noteDraft, setNoteDraft] = useState("");
   const [errorMsg, setErrorMsg] = useState(null);
   const [showTagMaker, setShowTagMaker] = useState(false);
+  const inFlightRef = useRef(new Set()); // trava síncrona contra clique duplo em ações destrutivas
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_PALETTE[0]);
 
-  // Sempre que o CSV atualiza (a cada 60s ou depois de um reload manual),
-  // substitui os leads/tags locais pela versão autoritativa da planilha.
   useEffect(() => {
-    if (IS_CONFIGURED) setLeads(leadsTable.rows.map(mapLeadRow));
-  }, [leadsTable.rows]);
-
-  useEffect(() => {
-    if (IS_CONFIGURED) setTags(tagsTable.rows.map(mapTagRow));
+    if (TAGS_CONFIGURED) setTags(tagsTable.rows.map(mapTagRow));
   }, [tagsTable.rows]);
 
   const tagsById = useMemo(() => Object.fromEntries(tags.map((t) => [t.id, t])), [tags]);
 
-  const activitiesByLead = useMemo(() => {
-    const map = {};
-    activitiesTable.rows.map(mapActivityRow).forEach((a) => {
-      (map[a.leadId] = map[a.leadId] || []).push(a);
+  async function reloadLeads() {
+    if (!token) return;
+    setLoadingLeads(true);
+    setLeadsError(null);
+    try {
+      const res = await fetch(LEADS_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        setLeads(data.leads.map(mapLeadRow));
+        setIsAdmin(!!data.isAdmin);
+      } else {
+        setLeadsError(data.error || "Não consegui carregar os leads.");
+      }
+    } catch (err) {
+      setLeadsError("Não consegui falar com o servidor.");
+    } finally {
+      setLoadingLeads(false);
+    }
+  }
+
+  useEffect(() => { reloadLeads(); }, [token]);
+
+  // Lista de gente pra reatribuir/filtrar — só busca se for admin.
+  useEffect(() => {
+    if (!isAdmin || !LIST_USERS_CONFIGURED || !token) return;
+    fetch(LIST_USERS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+    })
+      .then((r) => r.json())
+      .then((data) => { if (data.sucesso) setAllUsers(data.users || []); })
+      .catch(() => {});
+  }, [isAdmin, token]);
+
+  function ownerLabel(email) {
+    if (!email) return "—";
+    const u = allUsers.find((u) => u.email?.toLowerCase() === email.toLowerCase());
+    return u?.name || email.split("@")[0];
+  }
+
+  // Fallback pro seletor de dono quando list_users ainda não está configurado:
+  // deriva a lista de donos a partir dos próprios leads já carregados.
+  const ownerOptions = useMemo(() => {
+    if (allUsers.length > 0) return allUsers.map((u) => ({ email: u.email, name: u.name }));
+    const seen = new Map();
+    leads.forEach((l) => { if (l.ownerEmail && !seen.has(l.ownerEmail)) seen.set(l.ownerEmail, l.ownerEmail.split("@")[0]); });
+    return [...seen.entries()].map(([email, name]) => ({ email, name }));
+  }, [allUsers, leads]);
+
+  async function loadActivities(leadId, force = false) {
+    if (!token || (!force && activitiesByLead[leadId])) return;
+    setLoadingActivities(true);
+    setActivitiesError(null);
+    try {
+      const res = await fetch(ACTIVITIES_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, lead_id: leadId }),
+      });
+      const data = await res.json();
+      if (data.sucesso) {
+        setActivitiesByLead((prev) => ({ ...prev, [leadId]: data.activities.map(mapActivityRow) }));
+      } else {
+        setActivitiesError(data.error || "Não consegui carregar o histórico.");
+      }
+    } catch (err) {
+      setActivitiesError("Não consegui falar com o servidor de histórico.");
+    } finally {
+      setLoadingActivities(false);
+    }
+  }
+
+  function openLead(id) {
+    setSelectedId(id);
+    loadActivities(id);
+  }
+
+  async function postWrite(action, payload) {
+    const res = await fetch(WRITE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, action, ...payload }),
     });
-    Object.values(map).forEach((arr) => arr.sort((a, b) => (a.date < b.date ? 1 : -1)));
-    return map;
-  }, [activitiesTable.rows]);
+    const data = await res.json();
+    if (!data.sucesso) throw new Error(data.error || "Falha ao salvar.");
+    return data;
+  }
 
   const staleCount = leads.filter((l) => l.daysAgo > 6).length;
 
@@ -177,11 +257,12 @@ export default function CRMPage() {
     return leads.filter((l) => {
       const matchesQuery = !q || l.name.toLowerCase().includes(q) || l.contact.toLowerCase().includes(q);
       const matchesStage = stageFilter === "all" || l.stage === stageFilter;
-      const matchesSegment = segment === "all" || (segment === "mine" && l.owner === "João") || (segment === "stale" && l.daysAgo > 6);
+      const matchesSegment = segment === "all" || (segment === "mine" && l.ownerEmail === userEmail) || (segment === "stale" && l.daysAgo > 6);
       const matchesTags = tagFilter.size === 0 || (l.tagIds || []).some((t) => tagFilter.has(t));
-      return matchesQuery && matchesStage && matchesSegment && matchesTags;
+      const matchesOwnerFilter = !isAdmin || ownerFilter === "all" || l.ownerEmail === ownerFilter;
+      return matchesQuery && matchesStage && matchesSegment && matchesTags && matchesOwnerFilter;
     });
-  }, [leads, query, stageFilter, segment, tagFilter]);
+  }, [leads, query, stageFilter, segment, tagFilter, isAdmin, ownerFilter, userEmail]);
 
   const sortedForTable = useMemo(() => {
     const arr = [...filtered];
@@ -203,31 +284,32 @@ export default function CRMPage() {
   }, [filtered]);
 
   const selectedLead = leads.find((l) => l.id === selectedId) || null;
-  const selectedNotes = selectedLead
-    ? (IS_CONFIGURED ? (activitiesByLead[selectedLead.id] || []) : (selectedLead.notes || []))
-    : [];
+  const selectedNotes = selectedLead ? (activitiesByLead[selectedLead.id] || []) : [];
 
-  function updateLeadField(id, field, value) {
-    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, [field]: value } : l)));
-    if (!IS_CONFIGURED) return;
-    postToSheet(CONFIG.WEBAPP_URL, "updateLead", { id, fields: { [field]: value } }).catch((e) => {
+  function updateLeadField(id, sheetField, localField, value) {
+    setLeads((prev) => prev.map((l) => (l.id === id ? { ...l, [localField]: value } : l)));
+    postWrite("update_lead", { id, fields: { [sheetField]: value } }).catch((e) => {
       setErrorMsg(e.message);
-      leadsTable.reload();
+      reloadLeads();
     });
   }
 
   function moveLead(id, stage) {
-    updateLeadField(id, "stage", stage);
+    updateLeadField(id, "stage", "stage", stage);
+  }
+
+  function reassignOwner(id, email) {
+    if (!email.trim()) return;
+    updateLeadField(id, "owner_email", "ownerEmail", email.trim());
   }
 
   function toggleLeadTag(lead, tagId) {
     const current = lead.tagIds || [];
     const next = current.includes(tagId) ? current.filter((t) => t !== tagId) : [...current, tagId];
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, tagIds: next } : l)));
-    if (!IS_CONFIGURED) return;
-    postToSheet(CONFIG.WEBAPP_URL, "updateLead", { id: lead.id, fields: { tags: next.join(",") } }).catch((e) => {
+    postWrite("update_lead", { id: lead.id, fields: { tags: next.join(",") } }).catch((e) => {
       setErrorMsg(e.message);
-      leadsTable.reload();
+      reloadLeads();
     });
   }
 
@@ -242,16 +324,11 @@ export default function CRMPage() {
   async function createTag(e) {
     e.preventDefault();
     if (!newTagName.trim()) return;
-    if (!IS_CONFIGURED) {
-      const id = "tag" + Math.random().toString(36).slice(2, 8);
-      setTags((prev) => [...prev, { id, name: newTagName.trim(), color: newTagColor }]);
-    } else {
-      try {
-        await postToSheet(CONFIG.WEBAPP_URL, "createTag", { tag: { name: newTagName.trim(), color: newTagColor } });
-        await tagsTable.reload();
-      } catch (err) {
-        setErrorMsg(err.message);
-      }
+    try {
+      await postToSheet(CONFIG.WEBAPP_URL, "createTag", { tag: { name: newTagName.trim(), color: newTagColor } });
+      await tagsTable.reload();
+    } catch (err) {
+      setErrorMsg(err.message);
     }
     setNewTagName("");
     setNewTagColor(TAG_PALETTE[0]);
@@ -260,7 +337,6 @@ export default function CRMPage() {
   function deleteTag(id) {
     setTags((prev) => prev.filter((t) => t.id !== id));
     setTagFilter((prev) => { const next = new Set(prev); next.delete(id); return next; });
-    if (!IS_CONFIGURED) return;
     postToSheet(CONFIG.WEBAPP_URL, "deleteTag", { id }).catch((e) => {
       setErrorMsg(e.message);
       tagsTable.reload();
@@ -274,17 +350,11 @@ export default function CRMPage() {
   async function addLead(e) {
     e.preventDefault();
     if (!draft.name.trim()) return;
-    const lead = { name: draft.name, contact: draft.contact || "—", value: Number(draft.value) || 0, source: draft.source, stage: "leads", owner: "João" };
-    if (!IS_CONFIGURED) {
-      const id = "l" + Math.random().toString(36).slice(2, 8);
-      setLeads((prev) => [{ id, ...lead, daysAgo: 0, notes: [] }, ...prev]);
-    } else {
-      try {
-        await postToSheet(CONFIG.WEBAPP_URL, "createLead", { lead });
-        await leadsTable.reload();
-      } catch (err) {
-        setErrorMsg(err.message);
-      }
+    try {
+      await postWrite("create_lead", { lead: { name: draft.name, contact: draft.contact || "—", value: Number(draft.value) || 0, source: draft.source } });
+      await reloadLeads();
+    } catch (err) {
+      setErrorMsg(err.message);
     }
     setDraft({ name: "", contact: "", value: "", source: SOURCES[0] });
     setShowForm(false);
@@ -294,15 +364,9 @@ export default function CRMPage() {
     if (!noteDraft.trim()) return;
     const text = noteDraft.trim();
     setNoteDraft("");
-    if (!IS_CONFIGURED) {
-      setLeads((prev) => prev.map((l) => (l.id === id
-        ? { ...l, daysAgo: 0, notes: [{ date: "hoje", text }, ...(l.notes || [])] }
-        : l)));
-      return;
-    }
     try {
-      await postToSheet(CONFIG.WEBAPP_URL, "addActivity", { activity: { lead_id: id, text, created_by: "João" } });
-      await Promise.all([leadsTable.reload(), activitiesTable.reload()]);
+      await postWrite("add_activity", { activity: { lead_id: id, text } });
+      await Promise.all([reloadLeads(), loadActivities(id, true)]);
     } catch (err) {
       setErrorMsg(err.message);
     }
@@ -316,49 +380,52 @@ export default function CRMPage() {
     });
   }
 
-  function bulkMove(stage) {
+  async function bulkMove(stage) {
     if (!stage) return;
     const ids = [...selectedRows];
     setLeads((prev) => prev.map((l) => (selectedRows.has(l.id) ? { ...l, stage } : l)));
     setSelectedRows(new Set());
-    if (!IS_CONFIGURED) return;
-    postToSheet(CONFIG.WEBAPP_URL, "bulkUpdateStage", { ids, stage }).catch((e) => {
+    try {
+      for (const id of ids) await postWrite("update_lead", { id, fields: { stage } });
+    } catch (e) {
       setErrorMsg(e.message);
-      leadsTable.reload();
-    });
+    }
+    reloadLeads();
   }
 
-  function bulkRemove() {
+  async function bulkRemove() {
+    if (inFlightRef.current.has("bulkRemove")) return;
+    inFlightRef.current.add("bulkRemove");
     const ids = [...selectedRows];
     setLeads((prev) => prev.filter((l) => !selectedRows.has(l.id)));
     setSelectedRows(new Set());
-    if (!IS_CONFIGURED) return;
-    postToSheet(CONFIG.WEBAPP_URL, "bulkDelete", { ids }).catch((e) => {
+    try {
+      for (const id of ids) await postWrite("delete_lead", { id });
+    } catch (e) {
       setErrorMsg(e.message);
-      leadsTable.reload();
-    });
+    }
+    inFlightRef.current.delete("bulkRemove");
+    reloadLeads();
   }
 
   function deleteLead(id) {
+    if (inFlightRef.current.has(`delete:${id}`)) return;
+    inFlightRef.current.add(`delete:${id}`);
     setLeads((prev) => prev.filter((l) => l.id !== id));
     setSelectedId(null);
     setConfirmDeleteId(null);
-    if (!IS_CONFIGURED) return;
-    postToSheet(CONFIG.WEBAPP_URL, "deleteLead", { id }).catch((e) => {
-      setErrorMsg(e.message);
-      leadsTable.reload();
-    });
+    postWrite("delete_lead", { id })
+      .catch((e) => {
+        setErrorMsg(e.message);
+        reloadLeads();
+      })
+      .finally(() => inFlightRef.current.delete(`delete:${id}`));
   }
 
   return (
     <div className="crm">
-      {!IS_CONFIGURED && (
-        <div className="banner banner-info">
-          Rodando com dados de exemplo — preencha o <code>CONFIG</code> no topo de <code>CRMPage.jsx</code> com os dados da sua planilha e do Apps Script pra ligar de verdade.
-        </div>
-      )}
-      {IS_CONFIGURED && leadsTable.error && (
-        <div className="banner banner-error">Erro ao carregar a planilha: {leadsTable.error}</div>
+      {leadsError && (
+        <div className="banner banner-error">Erro ao carregar os leads: {leadsError}</div>
       )}
       {errorMsg && (
         <div className="banner banner-error">
@@ -370,7 +437,10 @@ export default function CRMPage() {
       <header className="crm-top">
         <div>
           <h1>Prospecting CRM</h1>
-          <p>{totals.count} leads · {currency(totals.totalValue)} em pipeline · {totals.won} ganhos</p>
+          <p>
+            {loadingLeads ? "Carregando…" : `${totals.count} leads · ${currency(totals.totalValue)} em pipeline · ${totals.won} ganhos`}
+            {isAdmin && <span className="admin-badge">admin</span>}
+          </p>
         </div>
         <button className="primary-btn" onClick={() => setShowForm((v) => !v)}>+ Novo lead</button>
       </header>
@@ -399,6 +469,12 @@ export default function CRMPage() {
         <button className={segment === "stale" ? "segment active" : "segment"} onClick={() => setSegment("stale")}>
           Parados {staleCount > 0 && <span className="segment-count">{staleCount}</span>}
         </button>
+        {isAdmin && ownerOptions.length > 0 && (
+          <select className="owner-filter" value={ownerFilter} onChange={(e) => setOwnerFilter(e.target.value)}>
+            <option value="all">Ver leads de: todo mundo</option>
+            {ownerOptions.map((o) => <option key={o.email} value={o.email}>{o.name}</option>)}
+          </select>
+        )}
       </div>
 
       <div className="crm-toolbar">
@@ -464,10 +540,10 @@ export default function CRMPage() {
                         style={{ borderLeftColor: health.color }}
                         draggable
                         onDragStart={(e) => e.dataTransfer.setData("text/lead-id", lead.id)}
-                        onClick={() => setSelectedId(lead.id)}
+                        onClick={() => openLead(lead.id)}
                       >
                         <div className="lead-card-top">
-                          <span className="avatar-sm" style={{ borderColor: OWNERS[lead.owner] }}>{initials(lead.contact)}</span>
+                          <span className="avatar-sm" style={{ borderColor: ownerColor(lead.ownerEmail) }}>{initials(lead.contact)}</span>
                           <strong>{lead.name}</strong>
                         </div>
                         <p className="lead-contact">{lead.contact}</p>
@@ -487,7 +563,7 @@ export default function CRMPage() {
                             <span className="health-dot" style={{ background: health.color }} />
                             {health.label}
                           </span>
-                          <span className="owner-chip" style={{ color: OWNERS[lead.owner] }}>{lead.owner}</span>
+                          <span className="owner-chip" style={{ color: ownerColor(lead.ownerEmail) }}>{ownerLabel(lead.ownerEmail)}</span>
                         </div>
                       </div>
                     );
@@ -525,7 +601,7 @@ export default function CRMPage() {
                       }}
                     />
                   </th>
-                  {[["name", "Cliente"], ["contact", "Contato"], ["stage", "Estágio"], ["value", "Valor"], ["source", "Origem"], ["daysAgo", "Último contato"], ["owner", "Dono"]].map(([key, label]) => (
+                  {[["name", "Cliente"], ["contact", "Contato"], ["stage", "Estágio"], ["value", "Valor"], ["source", "Origem"], ["daysAgo", "Último contato"], ["ownerEmail", "Dono"]].map(([key, label]) => (
                     <th key={key} onClick={() => toggleSort(key)}>
                       {label} {sort.key === key ? (sort.dir === "asc" ? "↑" : "↓") : ""}
                     </th>
@@ -542,23 +618,23 @@ export default function CRMPage() {
                       <td className="th-check" onClick={(e) => e.stopPropagation()}>
                         <input type="checkbox" checked={selectedRows.has(lead.id)} onChange={() => toggleRow(lead.id)} />
                       </td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}><strong>{lead.name}</strong></td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>{lead.contact}</td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>
+                      <td className="clickable" onClick={() => openLead(lead.id)}><strong>{lead.name}</strong></td>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>{lead.contact}</td>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>
                         <span className="badge"><span className="badge-dot" style={{ background: stage.dot }} />{stage.label}</span>
                       </td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>{currency(lead.value)}</td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>{lead.source}</td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>{currency(lead.value)}</td>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>{lead.source}</td>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>
                         <span className="health" style={{ color: health.color }}>
                           <span className="health-dot" style={{ background: health.color }} />
                           {daysAgoLabel(lead.daysAgo)}
                         </span>
                       </td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>
-                        <span className="owner-chip" style={{ color: OWNERS[lead.owner] }}>{lead.owner}</span>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>
+                        <span className="owner-chip" style={{ color: ownerColor(lead.ownerEmail) }}>{ownerLabel(lead.ownerEmail)}</span>
                       </td>
-                      <td className="clickable" onClick={() => setSelectedId(lead.id)}>
+                      <td className="clickable" onClick={() => openLead(lead.id)}>
                         <div className="table-tags">
                           {(lead.tagIds || []).map((tid) => tagsById[tid] && (
                             <span key={tid} className="lead-tag-chip" style={{ background: tagsById[tid].color }}>{tagsById[tid].name}</span>
@@ -569,7 +645,7 @@ export default function CRMPage() {
                   );
                 })}
                 {sortedForTable.length === 0 && (
-                  <tr><td colSpan={9} className="table-empty">Nenhum lead encontrado.</td></tr>
+                  <tr><td colSpan={9} className="table-empty">{loadingLeads ? "Carregando…" : "Nenhum lead encontrado."}</td></tr>
                 )}
               </tbody>
             </table>
@@ -585,12 +661,12 @@ export default function CRMPage() {
                 <input
                   className="drawer-name-input"
                   defaultValue={selectedLead.name}
-                  onBlur={(e) => e.target.value.trim() && e.target.value !== selectedLead.name && updateLeadField(selectedLead.id, "name", e.target.value.trim())}
+                  onBlur={(e) => e.target.value.trim() && e.target.value !== selectedLead.name && updateLeadField(selectedLead.id, "name", "name", e.target.value.trim())}
                 />
                 <input
                   className="drawer-contact-input"
                   defaultValue={selectedLead.contact}
-                  onBlur={(e) => e.target.value.trim() && e.target.value !== selectedLead.contact && updateLeadField(selectedLead.id, "contact", e.target.value.trim())}
+                  onBlur={(e) => e.target.value.trim() && e.target.value !== selectedLead.contact && updateLeadField(selectedLead.id, "contact", "contact", e.target.value.trim())}
                 />
               </div>
               <div className="drawer-head-actions">
@@ -614,21 +690,32 @@ export default function CRMPage() {
                   defaultValue={selectedLead.value}
                   onBlur={(e) => {
                     const n = Number(e.target.value) || 0;
-                    if (n !== selectedLead.value) updateLeadField(selectedLead.id, "value", n);
+                    if (n !== selectedLead.value) updateLeadField(selectedLead.id, "value", "value", n);
                   }}
                 />
               </div>
               <div>
                 <label>Origem</label>
-                <select value={selectedLead.source} onChange={(e) => updateLeadField(selectedLead.id, "source", e.target.value)}>
+                <select value={selectedLead.source} onChange={(e) => updateLeadField(selectedLead.id, "source", "source", e.target.value)}>
                   {SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
               </div>
               <div>
                 <label>Dono</label>
-                <select value={selectedLead.owner} onChange={(e) => updateLeadField(selectedLead.id, "owner", e.target.value)}>
-                  {Object.keys(OWNERS).map((o) => <option key={o} value={o}>{o}</option>)}
-                </select>
+                {!isAdmin ? (
+                  <div className="drawer-static owner-chip" style={{ color: ownerColor(selectedLead.ownerEmail) }}>{ownerLabel(selectedLead.ownerEmail)}</div>
+                ) : ownerOptions.length > 0 ? (
+                  <select value={selectedLead.ownerEmail || ""} onChange={(e) => reassignOwner(selectedLead.id, e.target.value)}>
+                    {ownerOptions.map((o) => <option key={o.email} value={o.email}>{o.name}</option>)}
+                  </select>
+                ) : (
+                  <input
+                    className="drawer-input"
+                    placeholder="e-mail do novo dono"
+                    defaultValue={selectedLead.ownerEmail || ""}
+                    onBlur={(e) => e.target.value !== selectedLead.ownerEmail && reassignOwner(selectedLead.id, e.target.value)}
+                  />
+                )}
               </div>
             </div>
 
@@ -670,7 +757,11 @@ export default function CRMPage() {
 
             <div className="drawer-timeline">
               <h3>Linha do tempo</h3>
-              {selectedNotes.length === 0 ? (
+              {loadingActivities && selectedNotes.length === 0 ? (
+                <p className="timeline-empty">Carregando…</p>
+              ) : activitiesError ? (
+                <p className="timeline-empty">{activitiesError}</p>
+              ) : selectedNotes.length === 0 ? (
                 <p className="timeline-empty">Nenhuma interação registrada ainda.</p>
               ) : (
                 <ul>
@@ -678,7 +769,7 @@ export default function CRMPage() {
                     <li key={i}>
                       <span className="timeline-dot" />
                       <div>
-                        <span className="timeline-date">{n.date}</span>
+                        <span className="timeline-date">{n.date}{n.createdBy ? ` · ${n.createdBy}` : ""}</span>
                         <p>{n.text}</p>
                       </div>
                     </li>
@@ -760,7 +851,8 @@ export default function CRMPage() {
 
         .crm-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
         .crm-top h1 { font-size: 22px; margin: 0 0 3px; font-weight: 700; letter-spacing: -0.3px; color: var(--ink); }
-        .crm-top p { margin: 0; color: var(--ink-soft); font-size: 13px; }
+        .crm-top p { margin: 0; color: var(--ink-soft); font-size: 13px; display: flex; align-items: center; gap: 8px; }
+        .admin-badge { background: var(--ink); color: #fff; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; padding: 2px 8px; border-radius: 20px; }
 
         .primary-btn { background: var(--ink); color: #fff; border: none; padding: 8px 15px; border-radius: 7px; font-size: 13px; font-weight: 600; white-space: nowrap; }
         .ghost-btn { background: none; color: var(--ink-soft); border: 1px solid var(--line); padding: 8px 13px; border-radius: 7px; font-size: 13px; }
@@ -776,11 +868,12 @@ export default function CRMPage() {
         .crm-form input[placeholder="Contato"] { flex: 1.4; min-width: 140px; }
         .crm-form input[type="number"] { width: 150px; }
 
-        .segments { display: flex; gap: 6px; margin-bottom: 12px; }
+        .segments { display: flex; gap: 6px; margin-bottom: 12px; align-items: center; flex-wrap: wrap; }
         .segment { background: var(--card); border: 1px solid var(--line); color: var(--ink-soft); font-size: 12.5px; font-weight: 600; padding: 6px 12px; border-radius: 20px; display: flex; align-items: center; gap: 6px; }
         .segment.active { background: var(--ink); border-color: var(--ink); color: #fff; }
         .segment-count { background: var(--red); color: #fff; font-size: 10px; font-weight: 700; border-radius: 20px; padding: 1px 6px; }
         .segment.active .segment-count { background: rgba(255,255,255,.25); }
+        .owner-filter { margin-left: auto; border: 1px solid var(--line); border-radius: 20px; padding: 6px 12px; font-size: 12.5px; color: var(--ink-soft); background: var(--card); }
 
         .crm-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
         .search { flex: 1; min-width: 220px; max-width: 320px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 11px; font-size: 13px; background: var(--card); color: var(--ink); }

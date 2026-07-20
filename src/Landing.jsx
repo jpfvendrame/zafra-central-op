@@ -99,7 +99,14 @@ export default function Landing({ onLogin }) {
       });
       const data = await res.json();
       if (data.sucesso) {
-        onLogin?.({ name: data.nome || email.split("@")[0], email: data.email || email, token: data.token || null });
+        onLogin?.({
+          name: data.nome || email.split("@")[0],
+          email: data.email || email,
+          token: data.token || null,
+          role: data.role || "",
+          accessCrm: data.access_crm,
+          accessAgents: data.access_agents,
+        });
       } else {
         setLoginError(data.error || "Email ou senha inválidos.");
       }
