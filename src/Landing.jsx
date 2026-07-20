@@ -30,7 +30,7 @@ const lerp = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
    ilustrativo (qualquer coisa entra) — pra não travar o resto do
    desenvolvimento enquanto o fluxo do n8n não estiver pronto.
 --------------------------------------------------------- */
-const AUTH_WEBHOOK_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/login_zafra_central";
+const AUTH_WEBHOOK_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook-test/login_zafra_central";
 const AUTH_CONFIGURED = !AUTH_WEBHOOK_URL.startsWith("COLE_");
 
 export default function Landing({ onLogin }) {
@@ -119,8 +119,6 @@ export default function Landing({ onLogin }) {
 
   return (
     <div className="landing">
-      <button className="landing-skip" onClick={() => onLogin?.()}>Pular intro →</button>
-
       <div className="landing-track" ref={trackRef} style={{ height: "300vh" }}>
         <div className="landing-stage">
           <div className="stage-globe" style={{ opacity: globeOpacity, transform: `translateY(${globeY}px) scale(${globeScale})` }}>
@@ -156,13 +154,6 @@ export default function Landing({ onLogin }) {
           max-width: none; display: block; text-align: left; color-scheme: light;
         }
         .landing { background: #fafafa; }
-        .landing-skip {
-          position: fixed; top: 20px; right: 22px; z-index: 20;
-          background: none; border: none; color: #a9a9ae; font-size: 12.5px;
-          font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif;
-          cursor: pointer; padding: 6px 10px;
-        }
-        .landing-skip:hover { color: #131314; }
 
         .landing-track { position: relative; }
         .landing-stage {
