@@ -148,6 +148,7 @@ export default function CRMPage({ token, userEmail }) {
   const [errorMsg, setErrorMsg] = useState(null);
   const [showTagMaker, setShowTagMaker] = useState(false);
   const inFlightRef = useRef(new Set()); // trava síncrona contra clique duplo em ações destrutivas
+  const writeQueueRef = useRef(Promise.resolve()); // serializa todas as escritas dessa aba, uma de cada vez
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState(TAG_PALETTE[0]);
 
@@ -240,14 +241,22 @@ export default function CRMPage({ token, userEmail }) {
   }
 
   async function postWrite(action, payload) {
-    const res = await fetch(WRITE_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token, action, ...payload }),
-    });
-    const data = await res.json();
-    if (!data.sucesso) throw new Error(data.error || "Falha ao salvar.");
-    return data;
+    const run = async () => {
+      const res = await fetch(WRITE_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, action, ...payload }),
+      });
+      const data = await res.json();
+      if (!data.sucesso) throw new Error(data.error || "Falha ao salvar.");
+      return data;
+    };
+    // Enfileira: nunca deixa duas escritas rodarem ao mesmo tempo nessa aba —
+    // evita que duas ações concorrentes leiam a planilha "ao mesmo tempo" e
+    // uma sobrescreva o resultado da outra.
+    const next = writeQueueRef.current.then(run, run);
+    writeQueueRef.current = next.catch(() => {});
+    return next;
   }
 
   const staleCount = leads.filter((l) => l.daysAgo > 6).length;
@@ -729,7 +738,7 @@ export default function CRMPage({ token, userEmail }) {
                     <button
                       key={t.id}
                       className={active ? "lead-tag-chip toggle active" : "lead-tag-chip toggle"}
-                      style={active ? { background: t.color } : { background: "#fff", border: `1px solid ${t.color}`, color: t.color }}
+                      style={active ? { background: t.color } : { background: "var(--card)", border: `1px solid ${t.color}`, color: t.color }}
                       onClick={() => toggleLeadTag(selectedLead, t.id)}
                     >
                       {t.name}
@@ -838,6 +847,10 @@ export default function CRMPage({ token, userEmail }) {
           --bg: #fafafa; --card: #ffffff; --ink: #131314; --ink-soft: #75757a; --ink-faint: #a9a9ae;
           --line: #e7e7e9; --accent: #2b2b2d; --green: #4a4a4d; --green-soft: #ececec; --red: #131314; --sand: #f2f2f0;
           color: var(--ink); font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px; position: relative;
+        }
+        .theme-dark .crm {
+          --bg: #0f0f11; --card: #19191c; --ink: #f2f2f0; --ink-soft: #a9a9ae; --ink-faint: #6f6f74;
+          --line: #2a2a2e; --accent: #e7e7e9; --green: #a9a9ae; --green-soft: #232327; --red: #f2f2f0; --sand: #202024;
         }
         .crm * { box-sizing: border-box; }
         .crm button, .crm input, .crm select { font-family: inherit; }

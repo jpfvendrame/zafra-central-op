@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "motion/react";
 import CRMPage from "./CRMpage";
 import Landing from "./Landing";
 import AIAgentsPage from "./AIAgentsPage";
+import SettingsPage from "./SettingsPage";
+import AccountSettingsPage from "./AccountSettingsPage";
 import zafraLogo from "./zafra_logo_branca.png";
 
 /* Rede de segurança: se qualquer página (CRM, Reports, etc.) quebrar em
@@ -183,6 +185,7 @@ const NAV = [
   { id: "home", label: "Home", icon: "home" },
   { id: "crm", label: "CRM", icon: "users" },
   { id: "aiagents", label: "AI Agents", icon: "sparkle" },
+  { id: "adminpanel", label: "Admin Panel", icon: "gear" },
   { id: "settings", label: "Settings", icon: "gear" },
 ];
 
@@ -283,7 +286,29 @@ function PanelHeader({ icon, title, action, onAction }) {
 /* ---------------- Main component ---------------- */
 export default function ZafraOperationsCenter() {
   const [user, setUser] = useState({ name: "João", email: "joao.costa@zafra.com" });
+  const [theme, setTheme] = useState("light");
   const [loggedIn, setLoggedIn] = useState(false);
+
+  // Carrega o tema salvo dessa conta específica assim que o login é confirmado
+  // (cada e-mail guarda a própria preferência, não uma só pra todo mundo).
+  useEffect(() => {
+    if (!loggedIn || !user.email) return;
+    try {
+      const saved = localStorage.getItem(`zoc-theme:${user.email}`);
+      setTheme(saved || "light");
+    } catch {
+      setTheme("light");
+    }
+  }, [loggedIn, user.email]);
+
+  useEffect(() => {
+    if (!loggedIn || !user.email) return;
+    try { localStorage.setItem(`zoc-theme:${user.email}`, theme); } catch {}
+  }, [theme, loggedIn, user.email]);
+
+  function toggleTheme() {
+    setTheme((t) => (t === "dark" ? "light" : "dark"));
+  }
 
   // Admin sempre tem acesso total, não importa o que estiver (ou não) nas
   // colunas access_crm/access_agents — só essas colunas valem pra outros papéis.
@@ -293,6 +318,7 @@ export default function ZafraOperationsCenter() {
   const visibleNav = NAV.filter((item) => {
     if (item.id === "crm") return hasCrmAccess;
     if (item.id === "aiagents") return hasAgentsAccess;
+    if (item.id === "adminpanel") return isAdmin;
     return true;
   });
 
@@ -438,6 +464,13 @@ export default function ZafraOperationsCenter() {
     setLoggedIn(true);
   }
 
+  function handleLogout() {
+    setLoggedIn(false);
+    setUser({ name: "", email: "", token: null, role: "", accessCrm: "", accessAgents: "" });
+    setActiveNav("home");
+    setMenuOpen(false);
+  }
+
   return (
     <>
       <style>{`
@@ -455,7 +488,7 @@ export default function ZafraOperationsCenter() {
           <Landing onLogin={handleLogin} />
         </motion.div>
       ) : (
-        <motion.div key="dashboard" className="zoc" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }}>
+        <motion.div key="dashboard" className={`zoc${theme === "dark" ? " theme-dark" : ""}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, ease: "easeOut" }}>
       <aside className="sidebar">
         <div className="brand">
           <img src={zafraLogo} alt="Zafra — marketing para turismo" className="brand-logo" />
@@ -500,6 +533,10 @@ export default function ZafraOperationsCenter() {
           <CRMPage token={user.token} userEmail={user.email} />
         ) : activeNav === "aiagents" ? (
           <AIAgentsPage token={user.token} userEmail={user.email} />
+        ) : activeNav === "adminpanel" ? (
+          <SettingsPage token={user.token} userEmail={user.email} />
+        ) : activeNav === "settings" ? (
+          <AccountSettingsPage token={user.token} userName={user.name} userEmail={user.email} theme={theme} onToggleTheme={toggleTheme} />
         ) : activeNav !== "home" ? (
           <div className="stub">
             <div className="stub-icon">{Icon[NAV.find((n) => n.id === activeNav).icon]({ width: 22, height: 22 })}</div>
@@ -517,10 +554,6 @@ export default function ZafraOperationsCenter() {
                 <p>{pipelineSummary.stale === 0 ? "Nenhum lead parado no momento." : `${pipelineSummary.stale} lead${pipelineSummary.stale > 1 ? "s" : ""} parado${pipelineSummary.stale > 1 ? "s" : ""} precisando de atenção.`}</p>
               </div>
               <div className="topbar-right">
-                <div className="search-box">
-                  <Icon.search width={15} height={15} />
-                  <input placeholder="Search…" />
-                </div>
                 <button className="icon-btn" aria-label="Notifications">
                   <Icon.bell width={16} height={16} />
                   {pipelineSummary.stale > 0 && <span className="icon-dot" />}
@@ -533,9 +566,9 @@ export default function ZafraOperationsCenter() {
                   </button>
                   {menuOpen && (
                     <div className="user-menu">
-                      <button>Meu perfil</button>
-                      <button>Preferências</button>
-                      <button className="danger">Sair</button>
+                      <button onClick={() => { setActiveNav("settings"); setMenuOpen(false); }}>Meu perfil</button>
+                      <button onClick={() => { setActiveNav("settings"); setMenuOpen(false); }}>Preferências</button>
+                      <button className="danger" onClick={handleLogout}>Sair</button>
                     </div>
                   )}
                 </div>
@@ -746,11 +779,18 @@ export default function ZafraOperationsCenter() {
         }
         .zoc * { box-sizing: border-box; }
         .zoc button, .zoc input { font-family: inherit; }
+
+        .zoc.theme-dark {
+          --bg: #0f0f11; --card: #19191c; --ink: #f2f2f0; --ink-soft: #a9a9ae; --ink-faint: #6f6f74;
+          --line: #2a2a2e; --accent: #e7e7e9; --accent-soft: #232327; --green: #a9a9ae; --green-soft: #232327;
+          --red: #f2f2f0; --red-soft: #2a2a2e; --sand: #202024;
+        }
+        .zoc.theme-dark .brand-logo { filter: brightness(0) invert(1); }
         .zoc button { cursor: pointer; }
 
         /* Sidebar */
         .sidebar {
-          background: #ffffff;
+          background: var(--card);
           border-right: 1px solid var(--line);
           padding: 20px 14px;
           display: flex;
@@ -820,11 +860,6 @@ export default function ZafraOperationsCenter() {
         .topbar p { margin: 0; color: var(--ink-soft); font-size: 13px; }
 
         .topbar-right { display: flex; align-items: center; gap: 8px; }
-        .search-box {
-          display: flex; align-items: center; gap: 7px; background: var(--card);
-          border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; color: var(--ink-faint);
-        }
-        .search-box input { border: none; outline: none; background: none; font-size: 12.5px; color: var(--ink); width: 140px; }
         .icon-btn { position: relative; width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--ink-soft); display: flex; align-items: center; justify-content: center; }
         .icon-btn:hover { background: var(--sand); }
         .icon-dot { position: absolute; top: 6px; right: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
@@ -858,9 +893,9 @@ export default function ZafraOperationsCenter() {
 
         .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
         .quick-shortcuts { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
-        .shortcut-btn { display: flex; align-items: center; gap: 8px; background: #ffffff; border: 1px solid #e7e7e9; color: #131314; font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 9px; }
-        .shortcut-btn:hover { border-color: #a9a9ae; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
-        .shortcut-icon { display: flex; align-items: center; color: #75757a; }
+        .shortcut-btn { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); color: var(--ink); font-size: 13px; font-weight: 600; padding: 10px 16px; border-radius: 9px; }
+        .shortcut-btn:hover { border-color: var(--ink-faint); box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+        .shortcut-icon { display: flex; align-items: center; color: var(--ink-soft); }
         .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
         .stat-card { padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
         .stat-icon {
@@ -952,7 +987,6 @@ export default function ZafraOperationsCenter() {
           .header-user-btn span:not(.avatar) { display: none; }
           .stats-grid { grid-template-columns: 1fr 1fr; }
           .content { padding: 20px 16px 36px; }
-          .search-box input { width: 90px; }
         }
       `}</style>
     </motion.div>

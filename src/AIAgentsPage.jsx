@@ -34,6 +34,69 @@ const PLACEHOLDER_AGENTS = [
 function nowLabel() {
   return new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
+
+/** Formatador leve de markdown — sem lib externa, cobre o que os agentes
+ * costumam mandar: **negrito**, *itálico*, `código`, listas numeradas e
+ * com marcador. Não é um parser completo, só o suficiente pra não mostrar
+ * asteriscos/números crus na tela. */
+function renderInline(text, keyPrefix) {
+  const nodes = [];
+  let remaining = text;
+  let key = 0;
+  const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/;
+  while (remaining) {
+    const match = remaining.match(regex);
+    if (!match) { nodes.push(remaining); break; }
+    const idx = match.index;
+    if (idx > 0) nodes.push(remaining.slice(0, idx));
+    if (match[2] !== undefined) nodes.push(<strong key={`${keyPrefix}-${key++}`}>{match[2]}</strong>);
+    else if (match[3] !== undefined) nodes.push(<em key={`${keyPrefix}-${key++}`}>{match[3]}</em>);
+    else if (match[4] !== undefined) nodes.push(<code key={`${keyPrefix}-${key++}`}>{match[4]}</code>);
+    remaining = remaining.slice(idx + match[0].length);
+  }
+  return nodes;
+}
+
+function renderMarkdownLite(text) {
+  if (!text) return null;
+  const str = String(text);
+  // Alguns agentes mandam a lista numerada "grudada" no mesmo parágrafo,
+  // sem quebra de linha — isso força cada "N. " a começar um item novo.
+  const segments = str.split(/(?=\d+\.\s+(?:\*\*|[A-ZÀ-Ü]))/);
+  const raw = [];
+  segments.forEach((seg) => {
+    const listMatch = seg.match(/^(\d+)\.\s+([\s\S]*)$/);
+    if (listMatch) {
+      raw.push({ type: "li", content: listMatch[2].trim() });
+      return;
+    }
+    seg.split("\n").forEach((line) => {
+      const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
+      if (bulletMatch) raw.push({ type: "bullet", content: bulletMatch[1].trim() });
+      else if (line.trim()) raw.push({ type: "p", content: line.trim() });
+    });
+  });
+
+  const blocks = [];
+  let current = null;
+  raw.forEach((b) => {
+    if (b.type === "li" || b.type === "bullet") {
+      const tag = b.type === "li" ? "ol" : "ul";
+      if (!current || current.type !== tag) { current = { type: tag, items: [] }; blocks.push(current); }
+      current.items.push(b.content);
+    } else {
+      current = null;
+      blocks.push(b);
+    }
+  });
+
+  return blocks.map((b, i) => {
+    if (b.type === "ol") return <ol key={i}>{b.items.map((it, j) => <li key={j}>{renderInline(it, `${i}-${j}`)}</li>)}</ol>;
+    if (b.type === "ul") return <ul key={i}>{b.items.map((it, j) => <li key={j}>{renderInline(it, `${i}-${j}`)}</li>)}</ul>;
+    return <p key={i}>{renderInline(b.content, `${i}`)}</p>;
+  });
+}
+
 function formatHistoryTime(raw) {
   const d = new Date(raw);
   return isNaN(d) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
@@ -249,7 +312,7 @@ export default function AIAgentsPage({ token }) {
               {messages.map((m, i) => (
                 <div key={i} className={`bubble-row ${m.role}`}>
                   <div className="bubble">
-                    {m.text}
+                    {m.role === "agent" ? <div className="bubble-md">{renderMarkdownLite(m.text)}</div> : m.text}
                     <span className="bubble-time">{m.time}</span>
                   </div>
                 </div>
@@ -315,6 +378,10 @@ const SHARED_STYLES = `
     --line: #e7e7e9; --sand: #f2f2f0;
     color: var(--ink); font-family: -apple-system, "Inter", "Segoe UI", system-ui, sans-serif; font-size: 14px;
   }
+  .theme-dark .agents {
+    --bg: #0f0f11; --card: #19191c; --ink: #f2f2f0; --ink-soft: #a9a9ae; --ink-faint: #6f6f74;
+    --line: #2a2a2e; --sand: #202024;
+  }
   .agents * { box-sizing: border-box; }
   .agents button { font-family: inherit; cursor: pointer; }
 
@@ -368,6 +435,14 @@ const SHARED_STYLES = `
   .bubble-row.user .bubble { background: var(--ink); color: #fff; border-bottom-right-radius: 4px; }
   .bubble-row.agent .bubble { background: var(--sand); color: var(--ink); border-bottom-left-radius: 4px; }
   .bubble-time { display: block; font-size: 10px; opacity: .55; margin-top: 4px; }
+  .bubble-md p { margin: 0 0 8px; }
+  .bubble-md p:last-child { margin-bottom: 0; }
+  .bubble-md ol, .bubble-md ul { margin: 0 0 8px; padding-left: 20px; }
+  .bubble-md ol:last-child, .bubble-md ul:last-child { margin-bottom: 0; }
+  .bubble-md li { margin-bottom: 4px; }
+  .bubble-md li:last-child { margin-bottom: 0; }
+  .bubble-md strong { font-weight: 700; }
+  .bubble-md code { background: rgba(0,0,0,.08); border-radius: 4px; padding: 1px 5px; font-size: 12px; font-family: ui-monospace, monospace; }
   .bubble.typing { display: flex; gap: 4px; align-items: center; padding: 14px; }
   .bubble.typing .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-faint); animation: typing-bounce 1.2s infinite; }
   .bubble.typing .dot:nth-child(2) { animation-delay: .15s; }
