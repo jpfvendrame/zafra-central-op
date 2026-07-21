@@ -29,7 +29,7 @@ const N8N_BASE = "https://n8n-n8n.yypjz6.easypanel.host/webhook";
 const LEADS_URL = `${N8N_BASE}/crm_get_leads`;
 const ACTIVITIES_URL = `${N8N_BASE}/crm_get_activities`;
 const WRITE_URL = `${N8N_BASE}/crm_write`;
-const LIST_USERS_URL = "https://n8n-n8n.yypjz6.easypanel.host/webhook/list_users";
+const LIST_USERS_URL = "COLE_A_URL_DO_WEBHOOK_list_users_AQUI";
 const LIST_USERS_CONFIGURED = !LIST_USERS_URL.startsWith("COLE_");
 
 // Só usado pra Tags (CSV público + Apps Script) — Leads/Activities não usam mais isso.
@@ -84,7 +84,7 @@ function mapLeadRow(raw) {
     source: raw.source || "",
     ownerEmail: raw.owner_email || "",
     daysAgo: daysSince(parseSheetDate(raw.last_contact_date)),
-    tagIds: String(raw.tags || "").split(",").map((t) => t.trim()).filter(Boolean),
+    tagIds: Array.isArray(raw.tag_ids) ? raw.tag_ids : String(raw.tags || "").split(",").map((t) => t.trim()).filter(Boolean),
   };
 }
 
@@ -314,9 +314,10 @@ export default function CRMPage({ token, userEmail }) {
 
   function toggleLeadTag(lead, tagId) {
     const current = lead.tagIds || [];
-    const next = current.includes(tagId) ? current.filter((t) => t !== tagId) : [...current, tagId];
+    const adding = !current.includes(tagId);
+    const next = adding ? [...current, tagId] : current.filter((t) => t !== tagId);
     setLeads((prev) => prev.map((l) => (l.id === lead.id ? { ...l, tagIds: next } : l)));
-    postWrite("update_lead", { id: lead.id, fields: { tags: next.join(",") } }).catch((e) => {
+    postWrite("toggle_lead_tag", { lead_id: lead.id, tag_id: tagId, add: adding }).catch((e) => {
       setErrorMsg(e.message);
       reloadLeads();
     });

@@ -77,8 +77,8 @@ export default function SettingsPage({ token, userEmail }) {
           email: draft.email.trim(),
           password: draft.password,
           role: draft.role,
-          access_crm: draft.access_crm ? "TRUE" : "FALSE",
-          access_agents: draft.access_agents ? "TRUE" : "FALSE",
+          access_crm: !!draft.access_crm,
+          access_agents: !!draft.access_agents,
         },
       });
       setDraft({ name: "", email: "", password: "", role: "comerciante", access_crm: false, access_agents: false });
@@ -108,8 +108,8 @@ export default function SettingsPage({ token, userEmail }) {
     setActionError(null);
     const fields = {
       role: editDraft.role,
-      access_crm: editDraft.access_crm ? "TRUE" : "FALSE",
-      access_agents: editDraft.access_agents ? "TRUE" : "FALSE",
+      access_crm: !!editDraft.access_crm,
+      access_agents: !!editDraft.access_agents,
     };
     if (editDraft.newPassword.trim()) fields.password = editDraft.newPassword.trim();
     try {
@@ -127,7 +127,7 @@ export default function SettingsPage({ token, userEmail }) {
   async function toggleActive(u) {
     const action = isInactive(u.active) ? "enable_user" : "disable_user";
     setActionError(null);
-    setUsers((prev) => prev.map((x) => (x.email === u.email ? { ...x, active: action === "enable_user" ? "TRUE" : "FALSE" } : x)));
+    setUsers((prev) => prev.map((x) => (x.email === u.email ? { ...x, active: action === "enable_user" } : x)));
     try {
       await postWrite(action, { email: u.email });
     } catch (err) {
