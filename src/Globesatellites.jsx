@@ -8,24 +8,7 @@ import createGlobe from "cobe";
    não usa TypeScript nem Tailwind.
 --------------------------------------------------------- */
 
-const defaultMarkers = [
-  { location: [45.0, -120.0] },
-  { location: [30.0, 45.0] },
-  { location: [-15.0, 100.0] },
-  { location: [60.0, -30.0] },
-  { location: [-40.0, -60.0] },
-  { location: [10.0, 150.0] },
-  { location: [55.0, 80.0] },
-  { location: [-25.0, 20.0] },
-  { location: [70.0, 25.0] },
-  { location: [-5.0, -75.0] },
-  { location: [35.0, -95.0] },
-  { location: [-50.0, 140.0] },
-  { location: [20.0, -20.0] },
-  { location: [50.0, 120.0] },
-  { location: [-30.0, 70.0] },
-  { location: [5.0, -150.0] },
-];
+const defaultMarkers = [];
 
 export default function GlobeSatellites({ markers = defaultMarkers, size = 420, speed = 0.003, className = "" }) {
   const canvasRef = useRef(null);
@@ -89,7 +72,7 @@ export default function GlobeSatellites({ markers = defaultMarkers, size = 420, 
         dark: 0.18,
         diffuse: 0.6,
         mapSamples: 16000,
-        mapBrightness: 0.45,
+        mapBrightness: 1.6,
         baseColor: [0.97, 0.97, 0.97],
         markerColor: [0.08, 0.08, 0.09], // preto/tinta, a pedido
         glowColor: [1, 1, 1],

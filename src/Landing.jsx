@@ -171,8 +171,8 @@ export default function Landing({ onLogin }) {
           pointer-events: none; max-width: 90vw;
         }
         .stage-logo { width: 230px; height: auto; filter: brightness(0); margin: 0 auto; display: block; }
-        .stage-title h1 { font-size: 68px; font-weight: 700; letter-spacing: -1.5px; color: #131314; margin: 14px 0 10px; }
-        .stage-title p { font-size: 19px; color: #75757a; margin: 0; }
+        .stage-title h1 { font-size: 68px; font-weight: 700; letter-spacing: -1.5px; color: #131314; margin: 14px 0 18px; }
+        .stage-title p { font-size: 19px; color: #131314; margin: 0; }
 
         .stage-login {
           position: absolute; width: 440px; max-width: 88vw; text-align: center;
